@@ -101,8 +101,39 @@ simSpline <- function(dat, pwr=3){
 
 ###--------------------------------------------------------------------------###
 
-simRF <- function(params, X, Y, predsX){
-  ...
+simRTree <- function(params, X, Y, predsX){
+  
+  # one tree and the size of terminal node = 1
+  nPred <- sum(params$infoX) + (params$mechanism == "mnar")
+  preds <- if (params$mechanism == "mnar") c(predsX, Y) else predsX
+  nodes <- list(1:nrow(X))
+  while (length(nodes) < nrow(X)){
+    
+    new <- sapply(nodes, function(node) {
+      # pick a predictor
+      pred <- sample(predsX, 1)
+      # make a split
+      if (extrReg(pred) <= sum(params$infoX[1], params$infoXnon[1])) {
+        j <- max(X[node,pred]) - 1
+        criter <- sample(x=0:j, size=1)*(j!=0)
+      } else {criter <- sample(x=X[node,pred], size=1)}
+      
+      #print(pred)
+      
+      return(list(node[X[node,pred] <= criter], node[X[node,pred] > criter]))}
+    )
+    
+    nodes <- new[lapply(new,length)>0]
+    
+  }
+  
+  # assign values
+  
+  R <- rep(NA, nrow(Y))
+  R[unlist(nodes)] <- rbinom(nrow(Y), params$pm)
+  return(R)
+
 }
+
 
 ###--------------------------------------------------------------------------###
