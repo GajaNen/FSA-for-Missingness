@@ -130,7 +130,7 @@ simRTree <- function(params, X, Y, predsX){
   # assign values
   
   R <- rep(NA, nrow(Y))
-  R[unlist(nodes)] <- rbinom(nrow(Y), params$pm)
+  R[unlist(nodes)] <- rbinom(x=nrow(Y), size=1, prob=params$pm)
   return(R)
 
 }
