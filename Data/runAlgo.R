@@ -28,16 +28,14 @@ fitAlgo <- function(func, name, params, folds, X, Y){
     
   } else {
     
-    ctrl <- caret::rfeControl(functions = caretFuncs, method = "cv",
+    ctrl <- caret::rfeControl(functions = params[[name]], method = "cv",
                               number = params$kOut, index = folds)
-    res <- caret::rfe(X, 
-                      Y,
+    res <- caret::rfe(x=X, y=Y,
                       sizes = params$sizes,
                       rfeControl = ctrl,
                       trControl = trControl,
-                      method = func,
-                      tuneGrid = tuneGrid,
-                      importance = "impurity")
+                      tuneGrid=tuneGrid,
+                      method = func)
     indices <- extrReg(predictors(res))
     # mean cross-validated pf
     acc <- res$results[res$results$Variables==res$bestSubset,"Accuracy"]
