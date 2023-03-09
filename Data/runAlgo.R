@@ -45,19 +45,6 @@ fitAlgo <- function(func, name, params, folds, X, Y){
     preds$rfe <- predictors(resRFE)
     acc$rfe <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
     
-    # GA
-    ctrlGA <- caret::gafsControl(functions = params[[paste0(name, "ga")]], 
-                                 method = "cv", number = params$kOut, 
-                                 index = folds)
-    resGA <- caret::gafs(x = X, y = Y,
-                         iters = 10,
-                         elite = 1,
-                         gafsControl = ctrlGA,
-                         method = func,
-                         tuneGrid = tuneGrid)
-    preds$ga <- resGA$optVariables
-    acc$ga <- resGA$averages[resGA$optIter,"Accuracy"]
-    
     # SA
     ctrlSA <- caret::safsControl(functions = params[[paste0(name, "sa")]], 
                                  method = "cv",number = params$kOut, 
@@ -66,7 +53,8 @@ fitAlgo <- function(func, name, params, folds, X, Y){
                          iters = 100,
                          safsControl = ctrlSA,
                          method = func,
-                         tuneGrid = tuneGrid)
+                         tuneGrid = tuneGrid,
+                         trControl = trControl)
     preds$sa <- resSA$optVariables
     acc$sa <- resSA$averages[resSA$optIter, "Accuracy"]
     
