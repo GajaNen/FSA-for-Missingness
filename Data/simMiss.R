@@ -38,11 +38,11 @@ simProbit <- function(params, X, Y, predsX, trans=F, spl=F, pwr=NULL){
       Y.preds <- creatDumm(Y[,i,drop=F])
     } else if (predsY && trans) {
       Y.preds <- params$trans[[1]](Y[,predsY,drop=F])
-    } else Y.preds <- vector(0)
+    } else Y.preds <- Y[,predsY,drop=F]
     
     # apply functions with non linear transformations to cont X
     if (trans){
-      X.cont <- do.call(cbind, lapply(1:xcontpr, function(c) 
+      X.cont <- do.call(cbind, lapply(2:(xcontpr+1), function(c) 
       params$trans[[c]](X[,((predsX[[i]])[-xcat.ind]),drop=F][,c,drop=F])))
     } else X.cont <- X[,((predsX[[i]])[-xcat.ind]),drop=F]
     
