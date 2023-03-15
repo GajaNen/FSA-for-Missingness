@@ -16,7 +16,7 @@ rfFuncs$selectSize <- function (x, metric, maximize)
     candidates <- index[x[, metric] >= perf]
   }
   best <- min(candidates)
-  min(x[best, "Variables"])
+  x[best, "Variables"]
   
   # check if index does what it should do (return indices of the elements of x
   # with this criteria)
@@ -48,7 +48,7 @@ caretFuncs$selectSize <- function (x, metric, maximize)
     candidates <- index[x[, metric] >= perf]
   }
   best <- min(candidates)
-  min(x[best, "Variables"])
+  x[best, "Variables"]
 }
 
 ###--------------------------------------------------------------------------###

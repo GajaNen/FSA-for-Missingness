@@ -2,7 +2,6 @@
 
 fitAlgo <- function(func, name, params, folds, X, Y){
   
-  #R2r <- NA
   regs <- name %in% c("lasso", "EN", "LR")
   kTr <- regs * params$kOut + (!regs) * params$kInn
   nTR <- 1 + (name == 'EN')
@@ -17,28 +16,16 @@ fitAlgo <- function(func, name, params, folds, X, Y){
                           method = func, trControl = trControl, 
                           tuneGrid = tuneGrid, metric = "Accuracy")
     if (name == "LR") {
-      # nam: coefficients of the final optimal model/HP fitted to the whole train set
-      #R2r <- performance::r2_mckelvey(model$finalModel)
       nam <- names(which((coef(summary(model))[-1,"Pr(>|z|)"]) < params$pGLM))
-      
     } else nam <- names(which(coef(model$finalModel, model$bestTune$lambda)[-1,] != 0))
     
-    indices <- extrReg(nam)
+    indices <- if (length(name)) extrReg(nam) else NULL
     # mean cv pf value
     acc <- model$results[rownames(model$bestTune), "Accuracy"]
     
-  } else if (name %in% c("RF", "SVM")) {
-    
-    # change that to predefined structure
-    preds <- rep(list(), 3)
-    acc <- list()
+  } else if (name %in% c("RF-RFE", "SVM-RFE")) {
     
     # RFE
-    # to modify how rfe is fitted to the data modify selectVar function
-    # also e.g. to remove the outer loop or not, to make it faster
-    # modify other funcs
-    # instead of guessing how is done, decide how you want to make it done
-    # and modify the existing code
     ctrlRFE <- caret::rfeControl(functions = params[[paste0(name, "rfe")]], 
                                  method = "cv", number = params$kOut, 
                                  index = folds)
@@ -48,10 +35,10 @@ fitAlgo <- function(func, name, params, folds, X, Y){
                          trControl = trControl,
                          tuneGrid = tuneGrid,
                          method = func)
-    preds$rfe <- predictors(resRFE)
-    acc$rfe <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
+    preds <- predictors(resRFE)
+    acc <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
+  } else if (name %in% c("RF-SA", "SVM-SA")){
     
-    # SA
     ctrlSA <- caret::safsControl(functions = params[[paste0(name, "sa")]], 
                                  method = "cv",number = params$kOut, 
                                  index = folds, improve = 50)
@@ -61,27 +48,36 @@ fitAlgo <- function(func, name, params, folds, X, Y){
                          method = func,
                          tuneGrid = tuneGrid,
                          trControl = trControl)
-    preds$sa <- resSA$optVariables
-    acc$sa <- resSA$averages[resSA$optIter, "Accuracy"]
-    # ACO
+    preds <- resSA$optVariables
+    acc <- resSA$averages[resSA$optIter, "Accuracy"]
+  } else if (name == "ACO"){
+    
     filt_eval <- FSinR::filterEvaluator('ReliefFeatureSetMeasure')
     aco_search <- FSinR::antColony()
-    res <- aco_search(cbind(Xrf, Y), "Y", featureSetEval = filt_eval)
-    preds$ACO<- paste0("X",
+    res <- aco_search(cbind(X, Y), "Y", featureSetEval = filt_eval)
+    preds <- paste0("X",
                        extrReg(dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]),
                        "D")
+  } else if (name == "SVM-L1"){
     
-    # Boruta for RF
+    ids <- rep(NA, 1:params$N)
+    for (x in 1:params$kOut) ids[setdiff(1:params$N, folds[[x]])] <- x
+    res <- sparseSVM::cv.sparseSVM(as.matrix(XsvmDumm), Y, alpha = 1, gamma = 0.1, nlambda=100,
+                                  lambda.min = 0.01, screen = "ASR", max.iter = 1000, eps = 1e-5,
+                                  fold.id = ids, nfolds = params$kOut)
+    lambda_res <- lambdaSE(res)
+    predsSSVM <- extrReg(
+      names(res$fit$weights[-1,lambda_res[[1]]])[res$fit$weights[-1,lambda_res[[1]]] != 0])
+    preds <- if (length(predsSSVM)) paste0("X", predsSSVM, "D") else NULL
+    acc <- 1 - lambda_res[[2]]
+  } else (name == "Boruta"){
+    
     if (name == "RF") {
-      # for "embedded method", e.g. 
-      mod <- ranger::ranger(Y~., data=Xrf, importance = "impurity")
       # add accuracy of mod + Boruta 
       mod <- Boruta::Boruta(Y~X)
       predB <- names(mod$finalDecision[mod$finalDecision == "Confirmed"])
-      if (length(predB)) preds$Boru <- paste0("X", predB, "D") else NULL
-      # to get accuracy, a model with the variables selected by B
+      if (length(predB)) preds <- paste0("X", extrReg(predB), "D") else NULL
     }
-    
     
   } else if (name == "ReliefF"){
     
