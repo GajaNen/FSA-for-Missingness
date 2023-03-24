@@ -1,5 +1,61 @@
 ###--------------------------------------------------------------------------###
 
+simX <- function(params){
+  
+  # generate relevant independent X
+  relt <- cbind(sapply(params$normParam, 
+                      function(x) rnorm(params$N, x[1], x[2]),
+                      simplify = T),
+               sapply(params$gammaParam, 
+                      function(x) rgamma(params$N, shape=x[1], rate=x[2]),
+                      simplify = T),
+               sapply(params$probBinRel, 
+                      function(x) rbinom(params$N, 1, x),
+                      simplify = T),
+               sapply(1:params$Nrel[3], 
+                      function(x) sample(0:(params$ncatsRel[x]-1), 
+                                         params$N, 
+                                         replace = TRUE, 
+                                         prob = params$probOrdRel[[x]]),
+                      simplify = T))
+  colnames(relt) <- paste0("relevan", 1:ncol(relt))
+  # generate irrelevant
+  irrelt <- cbind(sapply(params$normParam, 
+                        function(x) rnorm(params$N, x[1], x[2]),
+                        simplify = T),
+                 sapply(params$gammaParam, 
+                        function(x) rgamma(params$N, shape=x[1], rate=x[2]),
+                        simplify = T),
+                 sapply(params$probBinIrrel, 
+                        function(x) rbinom(params$N, 1, x),
+                        simplify = T),
+                 sapply(1:params$Nirrel[3], 
+                        function(x) sample(0:(params$ncatsIrrel[x]-1), 
+                                           params$N, 
+                                           replace = TRUE, 
+                                           prob = params$probOrdIrrel[[x]]),
+                        simplify = T))
+  colnames(irrelt) <- paste0("irrelvan", 1:ncol(irrelt))
+  # generate redundant
+  redt <- relt # add names
+  colnames(redt) <- paste0("redund", 1:ncol(redt))
+  return(cbind(relt, irrelt, redt))
+  
+}
+
+###--------------------------------------------------------------------------###
+
+simY <- function(params, X){
+  
+  rey <- cor(X[,1:sum(params$Nrel)], X[,1:sum(params$Nrel)])
+  cors <- sample(1:5, sum(params$Nrel), replace = T)
+  a <- sqrt(params$R2y/(t(cors) %*% solve(rey) %*% cors))[1]
+  cors <- a*cors
+  # for given correlations simulate Y (cont or transformed to bin/cat)
+}
+
+###--------------------------------------------------------------------------###
+
 simRho <- function(params){
   
   # sample from LKJ distribution
