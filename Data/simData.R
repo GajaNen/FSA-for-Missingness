@@ -3,6 +3,11 @@
 simX <- function(params){
   
   # generate relevant independent X
+  Nrel <- params$percRel * params$Ntotal
+  Nrest <- params$Ntotal - Nrel
+  if ((Nrel %% 3) || (Nrest %% 3)) stop(cat("Number of relevant and
+                                        the rest of features must
+                                        be a multiple of 3."))
   relt <- cbind(sapply(params$normParam, 
                       function(x) rnorm(params$N, x[1], x[2]),
                       simplify = T),
@@ -12,13 +17,23 @@ simX <- function(params){
                sapply(params$probBinRel, 
                       function(x) rbinom(params$N, 1, x),
                       simplify = T),
-               sapply(1:params$Nrel[3], 
+               sapply(1:(Nrel / 3), 
                       function(x) sample(0:(params$ncatsRel[x]-1), 
                                          params$N, 
                                          replace = TRUE, 
                                          prob = params$probOrdRel[[x]]),
                       simplify = T))
   colnames(relt) <- paste0("relevan", 1:ncol(relt))
+  # generate redundant features
+  if (params$typeRest == "IR"){
+    Nred <- Nrel
+    redt <- relt # add names
+    # add noise 
+    colnames(redt) <- paste0("redund", 1:ncol(redt))
+  } else {
+    Nred <- 0
+    redt <- vector(length = params$N)
+  }
   # generate irrelevant
   irrelt <- cbind(sapply(params$normParam, 
                         function(x) rnorm(params$N, x[1], x[2]),
@@ -29,17 +44,17 @@ simX <- function(params){
                  sapply(params$probBinIrrel, 
                         function(x) rbinom(params$N, 1, x),
                         simplify = T),
-                 sapply(1:params$Nirrel[3], 
+                 sapply(1:(Nrest - Nred), 
                         function(x) sample(0:(params$ncatsIrrel[x]-1), 
                                            params$N, 
                                            replace = TRUE, 
                                            prob = params$probOrdIrrel[[x]]),
                         simplify = T))
   colnames(irrelt) <- paste0("irrelvan", 1:ncol(irrelt))
-  # generate redundant
-  redt <- relt # add names
-  colnames(redt) <- paste0("redund", 1:ncol(redt))
-  return(cbind(relt, irrelt, redt))
+  
+  # is sample the correct way? i.e. are probs the cumulative probs
+  
+  return(data.frame(cbind(relt, irrelt, redt)))
   
 }
 
@@ -47,11 +62,18 @@ simX <- function(params){
 
 simY <- function(params, X){
   
-  rey <- cor(X[,1:sum(params$Nrel)], X[,1:sum(params$Nrel)])
-  cors <- sample(1:5, sum(params$Nrel), replace = T)
+  rey <- cor(X[,1:(params$percRel * params$Ntotal)], 
+             X[,1:(params$percRel * params$Ntotal)])
+  cors <- sample(1:10, (params$percRel * params$Ntotal), replace = T)
   a <- sqrt(params$R2y/(t(cors) %*% solve(rey) %*% cors))[1]
   cors <- a*cors
-  # for given correlations simulate Y (cont or transformed to bin/cat)
+  # for given correlations simulate Y
+  X <- scale(X[,1:(params$percRel * params$Ntotal)]) 
+  x <- 1:params$N
+  e <- residuals(lm(x ~ X)) 
+  X.dual <- with(svd(X), (params$N-1)*u %*% diag(ifelse(d > 0, 1/d, 0)) %*% t(v))
+  sigma2 <- c((1 - cors %*% cov(X.dual) %*% cors) / var(e))
+  return(X.dual %*% cors + sqrt(sigma2)*e)
 }
 
 ###--------------------------------------------------------------------------###
@@ -102,48 +124,5 @@ simRho <- function(params){
   
 }
 
-
-###--------------------------------------------------------------------------###
-
-
-simM <- function(params){
-  
-  # marginal distributions for cont variables
-  M <- t(apply(params$contParam, 1, 
-               function(x) round(calc_theory(Dist=x[3], 
-                                             params=as.numeric(x[1:2])), 
-                                 8)))
-  
-  return(M)
-}
-
-###--------------------------------------------------------------------------###
-
-simDat <- function(params, seed){
-  
-  M <- simM(params)
-  res <- simRho(params)
-  
-  B <- SimMultiCorrData::rcorrvar(n = params$N, k_cont = params$ncont, 
-                                  k_cat = params$ncat, method = "Polynomial", 
-                                  means = M[,1], vars =  (M[,2])^2,
-                                  skews = M[,3], skurts = M[,4],
-                                  fifths = M[,5], sixths = M[,6], 
-                                  marginal = params$marginal, rho = res$rey, 
-                                  errorloop = FALSE, seed=seed)
-  
-
-  # separate X and Y and name their columns
-  X <- cbind(B$ordinal_variables[,-c(1:params$ycat)] - 1, 
-             B$continuous_variables[,1:params$xcont])
-  colnames(X) <- paste0("X", 1:params$nX, "D")
-  Y <- cbind(B$ordinal_variables[,1:params$ycat] - 1, 
-             B$continuous_variables[,-c(1:params$xcont)])
-  colnames(Y) <- paste0("Y", 1:params$nY, "D")
-  
-  return(list(X=X, Y=Y, preds=res$preds, rey=res$rey))
-  
-  
-}
 
 ###--------------------------------------------------------------------------###
