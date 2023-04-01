@@ -5,8 +5,9 @@
 simX <- function(params){
   
   Nrel <- params$pr * params$Ntotal
-  if ((Nrel %% 6) || (Nrest %% 6)) stop("Number of relevant and
-                                        the irrelevant features each must
+  Nirrl <- params$Ntotal - Nrel
+  if ((Nrel %% 6) || (Nirrl %% 6)) stop("Number of the relevant and
+                                        irrelevant features each must
                                         be a multiple of 6. Adjust Ntotal
                                         or pr.")
   if (params$corrPred){
@@ -22,8 +23,11 @@ simX <- function(params){
                           margins = unlist(params$marginals), 
                           paramMargins = lapply(paramMarg, function(x) as.list(x)))
     relt <- as.data.frame(copula::rMvdc(1000, joint))
-    baseprobs <- genProbs(params$popProbsRel[[1]])
-    cprop <- t(apply(baseprobs, 1, cumsum)) 
+    cprop <- t(apply(params$popProbsRel[[1]], 1, cumsum)) 
+    if (apply(cprop, 1, max) != rep(1, nrow(cprop))){
+      stop(paste0("Baseline probabilities of relevant variables sum 
+                  up to:", apply(cprop, 1, max), "instead to 1 for each var."))
+    }
     quant <- t(apply(cprop, 1, stats::qlogis))
     relt[, (Nrel - Nrel / 3 + 1): Nrel] <- 
       genOrd(logisZ = relt[, (Nrel - Nrel / 3 + 1): Nrel, drop = F], 
@@ -45,7 +49,7 @@ simX <- function(params){
                      bP = unlist(params$binParamIrrel, recursive = F),
                      lP = params$popProbsIrrel[[1]],
                      Nobs = params$N,
-                     Nvar = params$Ntotal - Nrel)
+                     Nvar = Nirrl)
   colnames(irrelt) <- paste0("irrel", 1:ncol(irrelt))
 
   return(data.frame(cbind(relt, irrelt)))
