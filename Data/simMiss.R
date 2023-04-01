@@ -1,26 +1,27 @@
 ###--------------------------------------------------------------------------###
 
-simR <- function(params, X, Y, predsX){
-  
-  coln <- paste0("R", 1:params$nY)
-  
-  if (params$mechanism == "mcar"){
-    dat <- data.frame(replicate(params$nY, rbinom(params$N, 1, params$pm)))
-    colnames(dat) <- coln
-    # sim all: probit, gam, rf
-    return(list(dat=dat,preds=NULL))
-  }
-  
-  dat <- data.frame(ampUni(params, X, Y, predsX))
-  colnames(dat) <- coln
-  return(list(dat=dat, preds=predsX))
+# generate a cubic spline with 1 knot at the median
 
+simSpline <- function(dat, knots=1, deg=4, beta=NULL){
+  
+  spl <- apply(dat, 2, function(x) {
+    if (is.null(beta)) beta <- sample(0:4, deg + knots + 1, replace=T)
+    basis <- splines::bs(x = x, knots = median(x), degree = deg, intercept = TRUE)
+    basis %*% beta
+    }
+  )
+  
+  return(as.data.frame(spl))
+  
 }
 
 ###--------------------------------------------------------------------------###
 
-simProbit <- function(params, X, Y, predsX, trans=F, spl=F, pwr=NULL){
+simProbit <- function(params, X, Y, trans=F, spl=F){
   
+  # now only relevant variables are added so no need to subset
+  # just apply transformations / splines 
+  # no need to loop over nY since only Y
   z <- qnorm(1-params$pm)
   resVar <- sd_LP <- rep(0, nrow=params$nY)
   dats <- matrix(NA, nrow=params$N, ncol=params$nY)
@@ -36,17 +37,17 @@ simProbit <- function(params, X, Y, predsX, trans=F, spl=F, pwr=NULL){
     X.dummy <- creatDumm(X[,predsX[[i]][xcat.ind]])
     if (predsY && ycat) {
       Y.preds <- creatDumm(Y[,i,drop=F])
-    } else if (predsY && trans) {
+    } else if (predsY && trans) { # could be moved to the lower loop and next line is here instead
       Y.preds <- params$trans[[1]](Y[,predsY,drop=F])
     } else Y.preds <- Y[,predsY,drop=F]
     
     # apply functions with non linear transformations to cont X
     if (trans){
       X.cont <- do.call(cbind, lapply(2:(xcontpr+1), function(c) 
-      params$trans[[c]](X[,((predsX[[i]])[-xcat.ind]),drop=F][,c,drop=F])))
+        params$trans[[c]](X[,((predsX[[i]])[-xcat.ind]),drop=F][,c,drop=F])))
     } else X.cont <- X[,((predsX[[i]])[-xcat.ind]),drop=F]
     
-    if (spl) X.cont <- simSpline(X.cont, pwr=pwr)
+    if (spl) X.cont <- simSpline(X.cont, deg=params$deg)
     
     dat.all <- cbind(X.dummy, X.cont)
     
@@ -84,58 +85,21 @@ simProbit <- function(params, X, Y, predsX, trans=F, spl=F, pwr=NULL){
 
 ###--------------------------------------------------------------------------###
 
-# generate n splines with 3 knots
+# simulate missingness in a (non-)linear fashion with a probit-like model
 
-simSpline <- function(dat, pwr=3){
+simR <- function(params, X, Y, predsX){
   
-  spl <- apply(dat, 2, function(x) {
-    md <- median(x)
-    betas <- sample(1:10, pwr*2, replace=F)
-    indic <- x < md
-    poly <- do.call(cbind, lapply(1:pwr, function(i) x**i))
-    indic * (poly %*% betas[1:pwr]) + (1 - indic) * (poly %*% betas[(pwr+1):(2*pwr)])
-    }
-  )
-  
-  return(spl)
-
-}
-
-###--------------------------------------------------------------------------###
-
-simRTree <- function(params, X, Y, predsX){
-  
-  # one tree and the size of terminal node = 1
-  nPred <- sum(params$infoX) + (params$mechanism == "mnar")
-  preds <- if (params$mechanism == "mnar") c(predsX, Y) else predsX
-  nodes <- list(1:nrow(X))
-  while (length(nodes) < nrow(X)){
-    
-    new <- sapply(nodes, function(node) {
-      # pick a predictor
-      pred <- sample(predsX, 1)
-      # make a split
-      if (extrReg(pred) <= sum(params$infoX[1], params$infoXnon[1])) {
-        j <- max(X[node,pred]) - 1
-        criter <- sample(x=0:j, size=1)*(j!=0)
-      } else {criter <- sample(x=X[node,pred], size=1)}
-      
-      #print(pred)
-      
-      return(list(node[X[node,pred] <= criter], node[X[node,pred] > criter]))}
-    )
-    
-    nodes <- new[lapply(new,length)>0]
-    
+  if (params$mechanism == "mcar"){
+    preds <- NULL
+    dat <- rbinom(params$N, size = 1, prob = params$pm)
+    colnames(dat) <- c("Rrand")
+  } else {
+  preds <- grepl("^rel", colnames(X))
+  dat <- cbind(data.frame(simProbit(params, X[,preds], Y)), 
+               data.frame(simProbit(params, X[,preds], Y, spl=T)))
+  colnames(dat) <- c("Rlin", "Rnonlin")
   }
-  
-  # assign values
-  
-  R <- rep(NA, nrow(Y))
-  R[unlist(nodes)] <- rbinom(x=nrow(Y), size=1, prob=params$pm)
-  return(R)
-
+  return(list(dat=dat,preds=preds))
 }
-
 
 ###--------------------------------------------------------------------------###
