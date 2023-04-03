@@ -22,22 +22,16 @@ fixedParams <- list(N=1000,
                     Ntotal = 120,
                     deg = 4,
                     fcbcThres = list(0.2, 0.3, 0.4),
-                    rankers = list("LR"="glm", 
-                                   "linSvmRFE"="svmLinear", 
-                                   "rbfSvmRFE"="svmRadial", 
-                                   "rfRFE"="ranger", 
-                                   "ReliefF"=NULL, 
-                                   "FCBF"=NULL, 
+                    rankers = list("LR"="glm",  
+                                   "ReliefF"=NULL,
                                    "Boruta"=NULL),
                     subsets = list("lasso"="glmnet",
-                                   "EN"="glmnet", 
-                                   "linSvmRFE"="svmLinear", 
-                                   "linSvmSA"="svmLinear",
+                                   "EN"="glmnet",
                                    "rbfSvmRFE"="svmRadial", 
-                                   "rbfSvmSA"="svmRadial", 
-                                   "rfSA"="ranger", 
+                                   "rbfSvmSA"="svmRadial",
                                    "rfRFE"="ranger", 
-                                   "l1SVM"=NULL)
+                                   "l1SVM"=NULL,
+                                   "hyb"=NULL)
                     )
 
 
@@ -217,3 +211,4 @@ ord1 # 8th repetition, 2nd variable is suspicious? two times two biases opposite
 ord2
 
 #length(params$cormat) == (24*23)/2
+
