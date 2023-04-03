@@ -1,99 +1,143 @@
 ###--------------------------------------------------------------------------###
 
-fitAlgo <- function(func, name, params, folds, X, Y){
+# this is an ugly and long function
+# but making a smaller one and than using a form of looping, e.g. (x)apply, for
+# each algorithm I want to apply is the same, if not worse
+# open to other suggestion though 
+
+fitAlgo <- function(params, X, target){
   
-  regs <- name %in% c("lasso", "EN", "LR")
-  kTr <- regs * params$kOut + (!regs) * params$kInn
-  nTR <- 1 + (name == 'EN')
-  if (kTr == params$kOut) foldsTr <- folds else foldsTr <- NULL
-  tuneGrid <- params$tuneGrids[[name]]
-  trControl <- caret::trainControl(method = "cv", number = kTr, 
-                                   classProbs = T, index = foldsTr,
-                                   selectionFunction = "oneSE")
-  if (regs){
+  ranks <- data.table::data.table(array(
+    data = NA, dim = c(ncol(X), length(params$rankers))))
+  colnames(ranks) <- names(params$rankers)
+  substs <- vector(mode = "list", length = length(params$subsets))
+  names(substs) <- names(params$subsets)
+  acc <- list()
+  all <- c(params$rankers, params$subsets)
+  folds <- createFolds(target, k = params$kOut, returnTrain = TRUE)
+  
+  for (name in intersect(names(all), c("lasso", "EN", "LR"))){
     
-    model <- caret::train(x = X, y = Y, family = "binomial",
-                          method = func, trControl = trControl, 
-                          tuneGrid = tuneGrid, metric = "Accuracy")
+    trControl <- caret::trainControl(method = "cv", number = params$kOut, 
+                                     classProbs = T, index = folds,
+                                     selectionFunction = "oneSE")
+    model <- caret::train(x = X, y = target, family = "binomial",
+                          method = all[[name]], trControl = trControl, 
+                          tuneGrid = params$tuneGrids[[name]], 
+                          metric = "Accuracy")
     if (name == "LR") {
-      nam <- names(which((coef(summary(model))[-1,"Pr(>|z|)"]) < params$pGLM))
-    } else nam <- names(which(coef(model$finalModel, model$bestTune$lambda)[-1,] != 0))
+      ranks[,name] <- coef(summary(model))[-1,"Pr(>|z|)"]
+      } else substs[[name]] <- 
+      names(which(coef(model$finalModel, model$bestTune$lambda)[-1,] != 0))
+    acc[[name]] <- model$results[rownames(model$bestTune), "Accuracy"]
+  }
+  
+  trControl <- caret::trainControl(method = "cv", number = params$kInn,
+                                   selectionFunction = "oneSE")
+  
+  for (name in intersect(names(all), c("rfRFE", "linSvmRFE", "rbfSvmRFE"))){
     
-    indices <- if (length(name)) extrReg(nam) else NULL
-    # mean cv pf value
-    acc <- model$results[rownames(model$bestTune), "Accuracy"]
-    
-  } else if (name %in% c("RF-RFE", "SVM-RFE")) {
-    
-    # RFE
-    ctrlRFE <- caret::rfeControl(functions = params[[paste0(name, "rfe")]], 
+    ctrlRFE <- caret::rfeControl(functions = unlist(ifelse(grepl("^rf", name),
+                                                    list(rfFuncs), 
+                                                    list(caretFuncs))), 
                                  method = "cv", number = params$kOut, 
                                  index = folds)
-    resRFE <- caret::rfe(x = Xrf, y = Y,
+    resRFE <- caret::rfe(x = X, y = target,
                          sizes = params$sizes,
                          rfeControl = ctrlRFE,
                          trControl = trControl,
-                         tuneGrid = tuneGrid,
-                         method = func)
-    preds <- predictors(resRFE)
-    acc <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
-  } else if (name %in% c("RF-SA", "SVM-SA")){
-    
-    ctrlSA <- caret::safsControl(functions = params[[paste0(name, "sa")]], 
-                                 method = "cv",number = params$kOut, 
-                                 index = folds, improve = 50)
-    resSA <- caret::safs(x = X, y = Y,
-                         iters = 100,
-                         safsControl = ctrlSA,
-                         method = func,
-                         tuneGrid = tuneGrid,
-                         trControl = trControl)
-    preds <- resSA$optVariables
-    acc <- resSA$averages[resSA$optIter, "Accuracy"]
-  } else if (name == "ACO"){
-    
-    filt_eval <- FSinR::filterEvaluator('ReliefFeatureSetMeasure')
-    aco_search <- FSinR::antColony()
-    res <- aco_search(cbind(X, Y), "Y", featureSetEval = filt_eval)
-    preds <- paste0("X",
-                       extrReg(dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]),
-                       "D")
-  } else if (name == "SVM-L1"){
-    
-    ids <- rep(NA, 1:params$N)
-    for (x in 1:params$kOut) ids[setdiff(1:params$N, folds[[x]])] <- x
-    res <- sparseSVM::cv.sparseSVM(as.matrix(XsvmDumm), Y, alpha = 1, gamma = 0.1, nlambda=100,
-                                  lambda.min = 0.01, screen = "ASR", max.iter = 1000, eps = 1e-5,
-                                  fold.id = ids, nfolds = params$kOut)
-    lambda_res <- lambdaSE(res)
-    predsSSVM <- extrReg(
-      names(res$fit$weights[-1,lambda_res[[1]]])[res$fit$weights[-1,lambda_res[[1]]] != 0])
-    preds <- if (length(predsSSVM)) paste0("X", predsSSVM, "D") else NULL
-    acc <- 1 - lambda_res[[2]]
-  } else (name == "Boruta"){
-    
-    if (name == "RF") {
-      # add accuracy of mod + Boruta 
-      mod <- Boruta::Boruta(Y~X)
-      predB <- names(mod$finalDecision[mod$finalDecision == "Confirmed"])
-      if (length(predB)) preds <- paste0("X", extrReg(predB), "D") else NULL
-    }
-    
-  } else if (name == "ReliefF"){
-    
-    ranks <- FSelectorRcpp::relief(x=X, y=Y, sampleSize = 50) # works with factors
-    # consider only those which are not smaller than mean - 2*var
-    preds <- 
-      ranks[ranks$importance > (mean(ranks$importance) - 2*var(ranks$importance)),
-            "attributes"]
-    # or take the largest gap as cut-off
-    ord.ranks <- ranks[order(ranks$importance, decreasing = T),]
-    # min & negative diffs -- in case of 0 diff, this would be selected
-    preds <- ord.ranks[0:which.max(abs(diff(ord.ranks$importance))), "attributes"]
-  } 
+                         tuneGrid = params$tuneGrids[[all[[name]]]],
+                         method = all[[name]])
+    substs[[name]] <- predictors(resRFE)
+    # these ranks are only when variables were selected
+    # I want to obtain averaged ranking over 5 folds obtained before fitting 
+    # each subset size
+    #rk <- aggregate(resRFE$variables[,"Overall"], list(resRFE$variables$var), mean)
+    #ranks[,name] <- rk[as.integer(sapply(colnames(X),function(x) which(x == rk[,1]))),"x"]
+    acc[[name]] <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
+  }
   
-  return(list(acc=acc, preds=preds, R2r=R2r))
+  for (name in intersect(names(all), (c("rfSA", "rbfSvmRFE")))){
+    
+    ctrlSA <- caret::safsControl(functions = unlist(ifelse(grepl("^rf", name),
+                                                           list(rfSA), 
+                                                           list(caretSA))),
+                                 method = "cv",number = params$kOut, 
+                                 index = folds)
+    resSA <- caret::safs(x = X, y = target,
+                         iters = 50,
+                         safsControl = ctrlSA,
+                         method = all[[name]],
+                         tuneGrid = NULL,
+                         trControl = trControl)
+    substs[[name]] <- resSA$optVariables
+    acc[[name]] <- resSA$averages[resSA$optIter, "Accuracy"]
+  } 
+    
+  #filt_eval <- FSinR::filterEvaluator('ReliefFeatureSetMeasure')
+  #aco_search <- FSinR::antColony()
+  #res <- aco_search(cbind(X, target), "target", featureSetEval = filt_eval)
+  #preds <- dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]
+
+  ids <- rep(NA, params$N)
+  for (x in 1:params$kOut) ids[setdiff(1:params$N, folds[[x]])] <- x
+  res <- sparseSVM::cv.sparseSVM(as.matrix(X), target, alpha = 1, gamma = 0.1, nlambda=100,
+                                 lambda.min = 0.01, screen = "ASR", max.iter = 1000, eps = 1e-5,
+                                 fold.id = ids, nfolds = params$kOut)
+  lambda_res <- lambdaSE(res)
+  substs[["l1SVM"]] <- 
+    names(res$fit$weights[-1,lambda_res[[1]]])[res$fit$weights[-1,lambda_res[[1]]] != 0]
+  acc[["l1SVM"]] <- 1 - lambda_res[[2]]
+  
+  ranks[,"Boruta"] <- (Boruta::Boruta(target~X))$finalDecision
+  
+  # check sample size parameter
+  ranks[,"ReliefF"] <- FSelectorRcpp::relief(x=X, y=target, sampleSize = 10)[,2]
+  #ranks_stir <- stir::stir(X) maybe if not too slow
+  
+  # check how to add nominal: e.g. if you change name, ^.bin, ^.ord
+  # and save for each threshold a subset 
+  # FCBC_thres1
+  # and so add the number of subsets for (n-1)+n_thresholds_fcbc
+  lapply(params$fcbcThres, 
+         function(x) Biocomb::select.fast.filter(cbind(X, target),
+                                                      disc.method = "MDL",
+                                                      threshold = x,
+                                                      attrs.nominal = c(9:24, 57:120)))
+  return(list(ranks, substs))
   
 }
+
+###--------------------------------------------------------------------------###
+
+simCond(params, seed, rpt){
+  
+  # add magic with seeds
+  X <- simX(params)
+  Y <- simY(params, X[,grepl("^rel", colnames(X))])
+  R <- factor(simR(params, X, Y), labels = c("c", "m"))
+  res <- fitAlgo(params, X, R)
+  saveRDS(res, paste0(""))
+  
+}
+
+###--------------------------------------------------------------------------###
+
+simRep <- functio(fixed, varied, seed, rp){
+  
+  for (i in 1:nrow(varied)){
+    conds <- c(fixed, varied[i,])
+    # if change in X / Y simulate else keep the ones from before
+    X <- simX(params)
+    Y <- simY(params, X[,grepl("^rel", colnames(X))])
+    R <- factor(simR(params, X, Y), labels = c("c", "m"))
+    res <- fitAlgo(params, X, R)
+    saveRDS(res, paste0(""))
+  }
+}
+
+# make a loop over conditions (or rather rows of variedParams)
+# and take care of the RNG -- simCond not even needed if I use foreach
+# and then for over varied and within this
 
 ###--------------------------------------------------------------------------###

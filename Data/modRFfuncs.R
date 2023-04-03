@@ -17,17 +17,7 @@ rfFuncs$selectSize <- function (x, metric, maximize)
   }
   best <- min(candidates)
   x[best, "Variables"]
-  
-  # check if index does what it should do (return indices of the elements of x
-  # with this criteria)
-  # if it returns indices, then the smallest index will always refer to the smallest
-  # HP or smallest SS
-  # and then select of the column variables the one with such index
-  # could also rewrite it in a diff way (by indexing directly the column Variables
-  # candidates <- x[x[, metric] >= perf, "Variables"]
-  # min(candidates)
-  # check if it differs or rather if the current way always works
-  # if the code for train does not work do the same
+
 }
 
 ###--------------------------------------------------------------------------###
