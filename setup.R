@@ -1,5 +1,5 @@
 options(scipen=999)
-lapply(list("Data/simData.R", "Data/simMiss.R", "depend.R", "helper.R"), source)
+lapply(list("Data/simData.R", "Data/simMiss.R", "helpers.R"), source)
 source("Data/modRfFuncs.R")
 
 # fixed parameters
@@ -211,4 +211,5 @@ ord1 # 8th repetition, 2nd variable is suspicious? two times two biases opposite
 ord2
 
 #length(params$cormat) == (24*23)/2
+
 
