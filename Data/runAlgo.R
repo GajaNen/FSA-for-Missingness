@@ -9,7 +9,7 @@ fitAlgo <- function(params, X, target, rpt){
   names(substs) <- names(params$subsets)
   acc <- list()
   all <- c(params$rankers, params$subsets)
-  folds <- createFolds(target, k = params$kOut, returnTrain = TRUE)
+  folds <- caret::createFolds(target, k = params$kOut, returnTrain = TRUE)
   
   for (name in intersect(names(all), c("lasso", "EN", "LR"))){
     
@@ -102,18 +102,36 @@ fitAlgo <- function(params, X, target, rpt){
 }
 
 ###--------------------------------------------------------------------------###
-              
-simRep <- functio(fixed, varied, seed, rp){
+
+simRep <- function(fixed, varied, rpt, ncond=4){
   
+  prev <- rep("none", ncond)
   for (i in 1:nrow(varied)){
     conds <- c(fixed, varied[i,])
-    # if change in X / Y simulate else keep the ones from before
-    X <- simX(params)
-    Y <- simY(params, X[,grepl("^rel", colnames(X))])
-    R <- factor(simR(params, X, Y), labels = c("c", "m"))
-    res <- fitAlgo(params, X, R)
-    saveRDS(res, paste0(""))
+    changes <- setNames(varied[i, 1:ncond] != prev, colnames(varied)[1:ncond])
+    if (changes["pr"] || changes["corrPred"]){
+      X <- simX(conds)
+      Y <- simY(conds, X[,grepl("^rel", colnames(X))])
+    }
+    #R <- factor(simR(conds, X, Y), labels = c("c", "m"))
+    R <- factor(rbinom(conds$N, 1, 0.5), labels = c("c", "m"))
+    fitAlgo(conds, X, R, rpt)
+    message(paste0("Condition ", i, "out of ", nrow(varied), 
+                   "in repetition ", rpt, "finished!"))
   }
 }
 
 ###--------------------------------------------------------------------------###
+
+library(doParallel)
+library(doRNG)
+ncores <- detectCores()
+cl <- makeCluster(ncores-1)
+registerDoParallel(cl)
+
+# make message printed
+x <- foreach(nmc=1:1, .options.RNG=fixedParams$seed) %dorng% {
+  simRep(fixedParams, variedParams[1,],nmc)
+}
+
+doParallel::registerDoSEQ()
