@@ -1,44 +1,61 @@
 ###--------------------------------------------------------------------------###
 
-# TO DO: add potentiall dummy coding already here 
-# and add names of type of var
-# e.g. RelCont, RelOrd, RelBin, if dummy RelOrd1Dum1
 # so then in simR I can use ^relcont for splines and ^relord ^relbin for trans
 # also for ordinal and binary a transformation could be applied, e.g. sin, exp
+# bin bin
+# cat cat
 
-genOrd <- function(logisZ, quant, N, nvar){
+genOrd <- function(logisZ, lP, N){
   
-  ordDat <- matrix(NA, nrow = N, ncol = nvar)
+  cprop <- t(apply(lP, 1, cumsum))
+  if (any(apply(cprop, 1, max) != rep(1, nrow(lP)))){
+    stop(paste0("Baseline probabilities of ordinal variables sum 
+                  up to:", apply(cprop, 1, max), "instead to 1 for each."))
+  }
+  quant <- stats::qlogis(cprop)
+  maxs <- max.col(quant, ties.method = "first")
+  ncols_pv <- (maxs >= 5) + (maxs - 1) * (maxs < 5)
+  ordDat <- data.table::data.table(matrix(NA, nrow = N, ncol = sum(ncols_pv)))
+  coln <- vector(mode = "list", length = nrow(quant))
+  strIx <- 1
   
-  for (i in 1:nvar){
-    iLogis <- logisZ[,i]
+  for (i in 1:nrow(quant)){
+    LogisZi <- logisZ[, i]
     matlp <- matrix(rep(quant[i,], N),
                     ncol = ncol(quant),
-                    byrow = TRUE
-    )
-    
-    locateGrp <- (iLogis > cbind(-Inf, matlp))
-    ordDat[,i] <- apply(locateGrp, 1, sum)
+                    byrow = TRUE)
+    locateGrp <- (LogisZi > cbind(-Inf, matlp))
+    cats <- apply(locateGrp, 1, sum)
+    if (ncols_pv[i] > 1){
+      finalOut <- model.matrix(~factor(matrix(cats)))[,-1]
+      coln[[i]] <- paste0("Ord",i,"Cat",1:ncols_pv[i]+1)
+    } else {
+      finalOut <- cats
+      coln[[i]] <- paste0("Ord",i)
+    }
+    endIx <- strIx + ncols_pv[i] - 1
+    ordDat[,paste0("V",strIx:endIx) := finalOut]
+    strIx <- endIx + 1
   }
   
-  return(as.data.frame(ordDat))
+  setnames(ordDat,unlist(coln))
+  return(ordDat)
 }
 
+
+#unlist(lapply(1:nrow(quant), function(x) 
+#paste0("Ord",x,"Cat",setdiff(1:ncols_pv[x]+(ncols_pv[x] > 1), 1))))
+# but then "Cat remains
 #logisZ <- relt[, (Nrel - Nrel / 3 + 1): Nrel, drop = F]
 #N <- params$N
 #nvar <- (Nrel / 3)
 
 ###--------------------------------------------------------------------------###
 
-genIndep <- function(nP, gP, bP, lP, Nvar, Nobs){
+genIndMix <- function(nP, gP, bP, lP, Nvar, Nobs, prfx=""){
   
-  cprop <- t(apply(lP, 1, cumsum))
-  if (any(apply(cprop, 1, max) != rep(1, length(bP)))){
-    stop(paste0("Baseline probabilities of ordinal variables sum 
-                  up to:", apply(cprop, 1, max), "instead to 1 for each var."))
-  }
-  
-  vars <- cbind(MASS::mvrnorm(n = Nobs,
+  mixs <- data.table::as.data.table(
+                cbind(MASS::mvrnorm(n = Nobs,
                               mu = sapply(nP,"[[",1),
                               Sigma = diag(sapply(nP,"[[",2)**2, nrow = (Nvar / 6))),
                 sapply(gP, 
@@ -48,14 +65,59 @@ genIndep <- function(nP, gP, bP, lP, Nvar, Nobs){
                 genOrd(replicate(Nvar / 3, stats::qlogis(stats::runif(Nobs, 0, 1),
                                                          location = 0,
                                                          scale = 1)),
-                       quant = t(apply(cprop, 1, stats::qlogis)),
-                       N = Nobs,
-                       nvar = (Nvar / 3)
+                       lP = lP,
+                       N = Nobs)
                 )
-  )
+    )
+  nm <- varNamSet(nams=c("Cont", "Bin"), 
+                  nums=1:(Nvar / 3), 
+                  nmdDT=mixs)
+  data.table::setnames(mixs, paste0(prfx, nm))
+  return(mixs)
   
-  return(vars)
+}
+
+###--------------------------------------------------------------------------###
+
+varNamSet <- function(nams, nums, nmdDT, pattr=".*Ord"){
   
+  return(c(unlist(lapply(nams, paste0, nums)),
+    names(nmdDT)[grepl(pattr, names(nmdDT))]))
+  
+}
+
+###--------------------------------------------------------------------------###
+
+# generate correlated relevant variables of mixed types
+
+genCorMix <- function(params, prfx="Rel"){
+  
+  Nrel<-params$Ntotal*params$pr
+  paramMarg <- c(unlist(params$normParamRel, recursive = F),
+                 unlist(params$gamParamRel, recursive = F),
+                 unlist(params$binParamRel, recursive = F),
+                 lapply(1:(Nrel / 3),
+                        function(x) c(location = 0, scale = 1)))
+  copula <- copula::normalCopula(param = unlist(params$cormat), 
+                                 dim = Nrel,
+                                 dispstr = "un")
+  joint <- copula::mvdc(copula = copula, 
+                        margins = unlist(params$marginals), 
+                        paramMargins = lapply(paramMarg, function(x) as.list(x)))
+  relt <- copula::rMvdc(1000, joint)
+  ords <- genOrd(logisZ = relt[, (Nrel - Nrel / 3 + 1): Nrel], 
+                 lP = params$popProbsRel[[1]],
+                 N = params$N)
+  relt <- as.data.table(relt[, 1:(Nrel - Nrel / 3)])
+  # is there a way to transform these two lines to changing column names at the 
+  # same time as assingning by reference
+  #set(relt, j= names(ords), value=ords)
+  relt[, names(ords) := ords]
+  nm <- varNamSet(c("Cont", "Bin"), 
+                  1:(Nrel / 3), 
+                  relt)
+  data.table::setnames(relt, paste0(prfx, nm))
+  return(relt)
 }
 
 ###--------------------------------------------------------------------------###
@@ -71,48 +133,27 @@ simX <- function(params){
                                         be a multiple of 6. Adjust Ntotal
                                         or pr.")
   if (params$corrPred){
-    paramMarg <- c(unlist(params$normParamRel, recursive = F),
-                   unlist(params$gamParamRel, recursive = F),
-                   unlist(params$binParamRel, recursive = F),
-                   lapply(1:(Nrel / 3),
-                          function(x) c(location = 0, scale = 1)))
-    copula <- copula::normalCopula(param = unlist(params$cormat), 
-                                   dim = Nrel,
-                                   dispstr = "un")
-    joint <- copula::mvdc(copula = copula, 
-                          margins = unlist(params$marginals), 
-                          paramMargins = lapply(paramMarg, function(x) as.list(x)))
-    relt <- as.data.frame(copula::rMvdc(1000, joint))
-    cprop <- t(apply(params$popProbsRel[[1]], 1, cumsum)) 
-    if (any(apply(cprop, 1, max) != rep(1, nrow(cprop)))){
-      stop(paste0("Baseline probabilities of relevant variables sum 
-                  up to:", apply(cprop, 1, max), "instead to 1 for each var."))
-    }
-    quant <- t(apply(cprop, 1, stats::qlogis))
-    relt[, (Nrel - Nrel / 3 + 1): Nrel] <- 
-      genOrd(logisZ = relt[, (Nrel - Nrel / 3 + 1): Nrel, drop = F], 
-             quant = quant,
-             N = params$N,
-             nvar = (Nrel / 3))
+    relt <- genCorMix(params = params, prfx="Rel")
   } else {
-    relt <- genIndep(nP = unlist(params$normParamRel, recursive = F),
+    relt <- genIndMix(nP = unlist(params$normParamRel, recursive = F),
                      gP = unlist(params$gamParamRel, recursive = F),
                      bP = unlist(params$binParamRel, recursive = F),
                      lP = params$popProbsRel[[1]],
                      Nobs = params$N,
-                     Nvar = Nrel)
+                     Nvar = Nrel,
+                     prfx = "Rel")
   }
-  colnames(relt) <- paste0("rel", 1:Nrel)
   # generate irrelevant
-  irrelt <- genIndep(nP = unlist(params$normParamIrrel, recursive = F),
+  irrelt <- genIndMix(nP = unlist(params$normParamIrrel, recursive = F),
                      gP = unlist(params$gamParamIrrel, recursive = F),
                      bP = unlist(params$binParamIrrel, recursive = F),
                      lP = params$popProbsIrrel[[1]],
                      Nobs = params$N,
-                     Nvar = Nirrl)
-  colnames(irrelt) <- paste0("irrel", (Nrel+1):params$Ntotal)
-
-  return(data.frame(cbind(relt, irrelt)))
+                     Nvar = Nirrl,
+                     prfx = "Irrel")
+  
+  # join by reference
+  return(merge.data.table(relt, irrelt, all = T))
   
 }
 
