@@ -51,7 +51,7 @@ variedParams <- expand.grid(list(mechanism = c("mcar", "mar", "mnar"),
 variedParams <- as.data.table(variedParams)
 
 # don't vary pr for mcar remove with datatable magic
-variedParams
+#variedParams["mechanism"="mcar","pm"]
 
 # fix pseudo R^2 in missingness indicators per mechanism
 variedParams$R2r <-  ifelse(variedParams$mechanism == "mcar", 0.1,
@@ -127,29 +127,23 @@ variedParams$marginals <- lapply(fixedParams$Ntotal * variedParams$pr,
 
 parms <- c(fixedParams, variedParams[24,])
 X <- simX(parms)
-Y <- simY(parms, X[,grepl("^rel", colnames(X))])
-summary(lm(Y~., data=X[,grepl("^rel", colnames(X))]))
+nms <- names(X)[grepl("^Rel", names(X))]
+Y <- simY(parms, X[, .SD, ,.SDcols = nms])
+#Y <- simY(parms, X[,grepl("^rel", colnames(X))])
+summary(lm(Y~., data= X[, .SD, ,.SDcols = nms]))
 R <- as.factor(rbinom(1000, 1, 0.1))
 target <- R
 target <- factor(target, labels = c("c", "m"))
 
 params <- parms
 
-# smth wrong with tuning parameters of linear svm - works with no tuning grid
-# check for rbf
-# the same was last time, the problem could be C==0 -- no support vectors found
-# especially for mcar 
 
-# SA is super slow --- a way to parallelize it
-# or remove the ones which are less important (e.g. en, statistical relief)
 
 # bayesian methods and other suggestion
-# rfe-sve and rfe-rf are very popular and so nice to keep it
-# least angle regression and others not really
-
-#for SA got this and there's no results for sa rbf svm
-# Variable differences could not be computed: 
-# Not enough results to compute differences
+for (i in 1:24){
+  params <- c(fixedParams, variedParams[i,])
+  X <- simX(params)
+}
 
 ###############################################
 #################### check ####################
@@ -167,7 +161,8 @@ for (i in 1:24){
   
   parms <- c(fixedParams, variedParams[i,])
   X <- simX(parms)
-  Y <- simY(parms, X[,grepl("^rel", colnames(X))])
+  nms <- names(X)[grepl("^Rel", names(X))]
+  Y <- simY(parms, X[, .SD, ,.SDcols = nms])
   if (parms$corrPred){
     m <- matrix(NA,nrow=parms$Ntotal*parms$pr,ncol=parms$Ntotal*parms$pr)
     m[lower.tri(m)] <- unlist(parms$cormat)
@@ -183,20 +178,7 @@ for (i in 1:24){
       }
   }
   
-  Nrel <- parms$Ntotal * parms$pr
-  Nrest <- parms$Ntotal - Nrel
-  # check percentages of binary variables
-  relBin <- X[,(Nrel / 3 + 1):(Nrel / 3 *2)]
-  meansBin1[i,1:ncol(relBin)] <- (0.3 - apply(relBin, 2, mean))
-  irrelBin <- X[,(Nrel+(Nrest / 3 + 1)):(Nrel+(Nrest / 3 * 2))]
-  meansBin2[i,1:ncol(irrelBin)] <- (0.3 - apply(irrelBin, 2, mean))
-  # check percentages of categorical variables 
-  relOrd <- X[,(2*Nrel / 3 + 1):Nrel]
-  ord1[1:ncol(relOrd),,i] <- 
-    parms$popProbsRel[[1]] - t(apply(relOrd, 2, function(x) table(x)/length(x)))
-  irrelOrd <- X[,(Nrel+(2*Nrest / 3 + 1)):(Nrel+Nrest)]
-  ord2[1:ncol(irrelOrd),,i] <- 
-    parms$popProbsIrrel[[1]] - t(apply(irrelOrd, 2, function(x) table(x)/length(x)))
+
 }
 
 # also check each aspect but with replication and average to see how it behaves in the limit
@@ -204,6 +186,23 @@ for (i in 1:24){
 
 difs[1:6,1:6,which(variedParams$corrPred == 1 & variedParams$pr == 0.05)]
 difs[1:24,1:24,which(variedParams$corrPred == 1 & variedParams$pr == 0.2)]
+
+
+
+Nrel <- parms$Ntotal * parms$pr
+Nrest <- parms$Ntotal - Nrel
+# check percentages of binary variables
+relBin <- X[,(Nrel / 3 + 1):(Nrel / 3 *2)]
+meansBin1[i,1:ncol(relBin)] <- (0.3 - apply(relBin, 2, mean))
+irrelBin <- X[,(Nrel+(Nrest / 3 + 1)):(Nrel+(Nrest / 3 * 2))]
+meansBin2[i,1:ncol(irrelBin)] <- (0.3 - apply(irrelBin, 2, mean))
+# check percentages of categorical variables 
+relOrd <- X[,(2*Nrel / 3 + 1):Nrel]
+ord1[1:ncol(relOrd),,i] <- 
+  parms$popProbsRel[[1]] - t(apply(relOrd, 2, function(x) table(x)/length(x)))
+irrelOrd <- X[,(Nrel+(2*Nrest / 3 + 1)):(Nrel+Nrest)]
+ord2[1:ncol(irrelOrd),,i] <- 
+  parms$popProbsIrrel[[1]] - t(apply(irrelOrd, 2, function(x) table(x)/length(x)))
 meansBin1
 meansBin2
 ord1 # 8th repetition, 2nd variable is suspicious? two times two biases opposite
@@ -211,5 +210,3 @@ ord1 # 8th repetition, 2nd variable is suspicious? two times two biases opposite
 ord2
 
 #length(params$cormat) == (24*23)/2
-
-
