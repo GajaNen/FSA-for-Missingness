@@ -4,7 +4,8 @@ source("Data/modRfFuncs.R")
 
 # fixed parameters
 fixedParams <- list(N=1000, 
-                    trans=c(sin, exp, cos, identity),
+                    trans=c(sin, exp, cos, sin, sin, sin, sin, sin,
+                            sin, exp, exp, exp, sin, exp, exp, exp),
                     kInn=3, 
                     kOut=5, 
                     sizes = c(0:6),
@@ -128,12 +129,56 @@ variedParams$marginals <- lapply(fixedParams$Ntotal * variedParams$pr,
 parms <- c(fixedParams, variedParams[24,])
 X <- simX(parms)
 nms <- names(X)[grepl("^Rel", names(X))]
-Y <- simY(parms, X[, .SD, ,.SDcols = nms])
+Y <- simY(parms, X[, ..nms])
 #Y <- simY(parms, X[,grepl("^rel", colnames(X))])
-summary(lm(Y~., data= X[, .SD, ,.SDcols = nms]))
-R <- as.factor(rbinom(1000, 1, 0.1))
-target <- R
+summary(lm(V1~., data=cbind(X[, ..nms],Y)))
+R <- simR(parms, X, Y)
+target <- R$R
+mean(target) 
+parms$pm
 target <- factor(target, labels = c("c", "m"))
+require(performance)
+rels <- copy(X[, ..nms])
+rels[,c(9:24) := mapply({function(f, x) f(x)}, parms$trans, .SD, SIMPLIFY = FALSE),
+     .SDcols = names(X)[grepl("(^RelBin)|(^RelOrd)", names(X))]]
+rels[,c(1:8) := lapply(.SD, simSpline, deg = parms$deg),
+     .SDcols = names(X)[grepl("^RelCont", names(X))]]
+m <- glm(target~., data = as.data.frame(cbind(rels,Y,target)), family = binomial("probit"))
+r2_mckelvey(m)
+parms$R2r
+
+## check McKelvey's R^2 ##
+
+means <- rep(NA, 1000)
+r2rs <- rep(NA, 1000)
+
+for (i in 1:1000){
+  X <- simX(parms)
+  nms <- names(X)[grepl("^Rel", names(X))]
+  Y <- simY(parms, X[, ..nms])
+  R <- simR(parms, X, Y)
+  target <- R$R
+  means[i] <- mean(target) 
+  target <- factor(target, labels = c("c", "m"))
+  #require(performance)
+  rels <- copy(X[, ..nms])
+  rels[,c(9:24) := mapply({function(f, x) f(x)}, parms$trans, .SD, SIMPLIFY = FALSE),
+       .SDcols = names(X)[grepl("(^RelBin)|(^RelOrd)", names(X))]]
+  rels[,c(1:8) := lapply(.SD, simSpline, deg = parms$deg),
+       .SDcols = names(X)[grepl("^RelCont", names(X))]]
+  m <- glm(target~., data = as.data.frame(cbind(rels,Y,target)), family = binomial("probit"))
+  r2rs[i] <- r2_mckelvey(m)
+  #parms$R2r
+  
+}
+
+hist(means)
+plot(density(means))
+mean(means)
+sd(means)
+hist(r2rs)
+plot(density(r2rs))
+mean(r2rs)
 
 params <- parms
 
