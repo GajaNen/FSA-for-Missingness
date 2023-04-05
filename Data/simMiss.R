@@ -6,51 +6,53 @@ simSpline <- function(x, deg=3, knots=1, coefSpl=NULL){
   
   if (is.null(coefSpl)) coefSpl <- runif(deg + knots + 1, 0, 1)
   bas <- splines::bs(x = x, knots = median(x), degree = deg, intercept = TRUE)
-  # plot(x, bas %*% coefSpl)
   return(as.vector(bas %*% coefSpl))
 
 }
 
 ###--------------------------------------------------------------------------###
 
-simProbit <- function(params, Xrel, Y){
+simProbit <- function(params, X, Y){
 
   z <- qnorm(1-params$pm)
-  out <- data.table::data.table(LP=rep(NA, params$N))
+  #out <- data.table::data.table(LP=rep(NA, params$N))
   is.mnar <- params$mechanism == "mnar"
+  X.temp <- cbind(data.table::copy(X), Y[,..is.mnar]) 
 
-  # apply splines to cont vars (and y if is.mnar)
-  contNms <- names(Xrel)[grepl("^RelCont", names(Xrel))]
-  splns <- cbind(data.table::copy(Xrel[,..contNms]), Y[,..is.mnar]) 
-  splns[, (contNms) := lapply(.SD, simSpline, deg = params$deg),
+  # apply splines to continuous X (and y if is.mnar)
+  contNms <- c(names(X.temp)[grep("^RelCont", names(X.temp))], names(Y)[is.mnar])
+  X.temp[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = params$theta),
         .SDcols = contNms]
   
   # apply some transformations to any discrete X
-  catNms <- names(Xrel)[grepl("(^RelBin)|(^RelOrd)", names(Xrel))] # for safety
+  catNms <- names(X.temp)[grep("(^RelBin)|(^RelOrd)", names(X.temp))] # for safety
   if (is.null(params$trans)){
     transf <- lapply(1:length(catNms), function(x) identity)
-  } else transf <- params$trans
-  transformed <- data.table::copy(Xrel[,..catNms])
-  transformed[, (catNms) := mapply({function(f, x) f(x)}, transf, .SD, SIMPLIFY = FALSE), 
-              .SDcols = catNms]
+  } else transf <- unlist(params$trans)
+  X.temp[, (catNms) := mapply({function(f, x) f(x)}, transf, .SD, SIMPLIFY = FALSE), 
+        .SDcols = catNms]
   
-  preds.all <- cbind(splns, transformed)
-  coefsRel <- rep(1, length(preds.all))
+  # scale variables and assign moderately large coefs, the largest if mnar
+  allNms <- c(contNms, catNms)
+  X.temp[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
+  coefsRel <- runif(length(allNms), 0.4, 0.5)
+  if (is.mnar) coefsRel[which(allNms == names(Y))] <- max(coefsRel)*1.5
   
   # LP
-  out[, LP := as.matrix(preds.all) %*% coefsRel]
+  out <- data.table::data.table(as.matrix(X.temp[, ..allNms]) %*% coefsRel)
+  data.table::setnames(out, "LP")
   
   # define residual variance for the linear predictor
-  s <- t(coefsRel) %*% cov(preds.all) %*% coefsRel
+  explSig <- t(coefsRel) %*% cov(X.temp[, ..allNms]) %*% coefsRel
   if (params$R2r %in% c(0,1)) stop('R**2 for indicator must not be 0 or 1.')
-  resSig <- (s / params$R2r) - s
+  resSig <- (explSig / params$R2r) - explSig
   
   # define theoretical sd of lp
-  sd.LP <- as.numeric(sqrt(s + resSig))
+  sd.LP <- as.numeric(sqrt(explSig + resSig))
     
   # set mean as threshold and discretize at z*theoretical SD above it
   out[, LP := LP + MASS::mvrnorm(params$N, 0, resSig)]
-  return(out[, as.numeric(LP > (mean(LP)+ (z)*(sd.LP)))])
+  return(out[, as.numeric(LP > (mean(LP) + (z) * (sd.LP)))])
   
 }
 

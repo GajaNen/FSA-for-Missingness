@@ -4,8 +4,6 @@ source("Data/modRfFuncs.R")
 
 # fixed parameters
 fixedParams <- list(N=1000, 
-                    trans=c(sin, exp, cos, sin, sin, sin, sin, sin,
-                            sin, exp, exp, exp, sin, exp, exp, exp),
                     kInn=3, 
                     kOut=5, 
                     sizes = c(0:6),
@@ -37,9 +35,9 @@ fixedParams <- list(N=1000,
 
 
 # population correlation matrices for Gaussian copula
-cm_lp <- rlkjcorr(1, fixedParams$Ntotal*0.05, 0.0001)
+cm_lp <- rethinking::rlkjcorr(1, fixedParams$Ntotal*0.05, 0.0001)
 diag(cm_lp) <- 1
-cm_hp <- rlkjcorr(1, fixedParams$Ntotal*0.2, 0.0001)
+cm_hp <- rethinking::rlkjcorr(1, fixedParams$Ntotal*0.2, 0.0001)
 diag(cm_hp) <- 1
 #plot((cm_hp[lower.tri(cm_hp)][order(cm_hp[lower.tri(cm_hp)])]))
 
@@ -49,10 +47,17 @@ variedParams <- expand.grid(list(mechanism = c("mcar", "mar", "mnar"),
                                  corrPred = c(0, 1),
                                  pr = c(0.05, 0.2)))
 
-variedParams <- as.data.table(variedParams)
+variedParams <- data.table::as.data.table(variedParams)
 
 # don't vary pr for mcar remove with datatable magic
-#variedParams["mechanism"="mcar","pm"]
+#variedParams[(mechanism=="mcar" & pr == 0.2) := NULL,]
+
+
+variedParams$trans <- ifelse(variedParams$pr==0.2,
+                             lapply(1:24, function(x) 
+                               c(sin, exp, cos, sin, sin, sin, sin, sin,
+                                            sin, exp, exp, exp, sin, exp, exp, exp)),
+                             lapply(1:24, function(x) c(sin, exp, cos, sin)))
 
 # fix pseudo R^2 in missingness indicators per mechanism
 variedParams$R2r <-  ifelse(variedParams$mechanism == "mcar", 0.1,
@@ -149,28 +154,62 @@ parms$R2r
 
 ## check McKelvey's R^2 ##
 
-means <- rep(NA, 1000)
-r2rs <- rep(NA, 1000)
+meansDT <- data.table::data.table(rep(NA, 1000),rep(NA, 1000),rep(NA, 1000),rep(NA, 1000))
+r2rsDT <- data.table::data.table(rep(NA, 1000),rep(NA, 1000),rep(NA, 1000),rep(NA, 1000))
+# rows 
 
-for (i in 1:1000){
-  X <- simX(parms)
-  nms <- names(X)[grepl("^Rel", names(X))]
-  Y <- simY(parms, X[, ..nms])
-  R <- simR(parms, X, Y)
-  target <- R$R
-  means[i] <- mean(target) 
-  target <- factor(target, labels = c("c", "m"))
-  #require(performance)
-  rels <- copy(X[, ..nms])
-  rels[,c(9:24) := mapply({function(f, x) f(x)}, parms$trans, .SD, SIMPLIFY = FALSE),
-       .SDcols = names(X)[grepl("(^RelBin)|(^RelOrd)", names(X))]]
-  rels[,c(1:8) := lapply(.SD, simSpline, deg = parms$deg),
-       .SDcols = names(X)[grepl("^RelCont", names(X))]]
-  m <- glm(target~., data = as.data.frame(cbind(rels,Y,target)), family = binomial("probit"))
-  r2rs[i] <- r2_mckelvey(m)
-  #parms$R2r
+i1 <- c(fixedParams, variedParams[pr==0.05 & mechanism=="mar" & pm==0.1 & corrPred==1,])
+i2 <-  c(fixedParams, variedParams[pr==0.05 & mechanism=="mar" & pm==0.5 & corrPred==1,])
+i3 <-  c(fixedParams, variedParams[pr==0.05 & mechanism=="mnar" & pm==0.1 & corrPred==1,])
+i4 <-  c(fixedParams, variedParams[pr==0.05 & mechanism=="mnar" & pm==0.5 & corrPred==1,])
+
+countr <- 1
+
+test.conds <- expand.grid(list(pm=c(0.1, 0.5),
+                               mechanism=c("mar", "mnar")))
+for (i in 1:4){
+  mech <- test.conds[i,"mechanism"]
+  perc <- test.conds[i,"pm"]
+  parms <- c(fixedParams, variedParams[pr==0.05 & mechanism==(mech) 
+                                       & pm==(perc) & corrPred==1,])
   
+  means <- rep(NA, 1000)
+  r2r <- rep(NA, 1000)
+  for (j in 1:1000){
+    X <- simX(parms)
+    nms <- names(X)[grepl("^Rel", names(X))]
+    Y <- simY(parms, X[, ..nms])
+    R <- simR(parms, X, Y)
+    target <- R$R
+    means[j] <- mean(target) 
+    target <- factor(target, labels = c("c", "m"))
+    #require(performance)
+    is.mnar <- params$mechanism == "mnar"
+    Xt <- cbind(data.table::copy(X), Y[,..is.mnar]) 
+    contNms <- c(names(Xt)[grep("^RelCont", names(Xt))], names(Y)[is.mnar])
+    Xt[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = params$theta),
+           .SDcols = contNms]
+    catNms <- names(Xt)[grep("(^RelBin)|(^RelOrd)", names(Xt))]
+    Xt[, (catNms) := mapply({function(f, x) f(x)}, unlist(params$trans), .SD, SIMPLIFY = FALSE), 
+           .SDcols = catNms]
+    m <- glm(target~., data = cbind(as.data.frame(Xt),target), 
+             family = binomial("probit"))
+    r2r[j] <- performance::r2_mckelvey(m)
+    #parms$R2r
+    
+  }
+  
+  meansDT[, (paste0("V", countr)) := means]
+  r2rsDT[, (paste0("V", countr)) := r2r]
+  countr <- countr + 1
 }
+
+
+saveRDS(meansDT[, lapply(.SD, mean)], "mean pm over 1000 repetitions")
+saveRDS(r2rsDT[,lapply(.SD, mean)], "mean R2r over 1000 repetitions")
+
+saveRDS(meansDT[, lapply(.SD, mean)], "mean pm over 1000 repetitions scaled preds")
+saveRDS(r2rsDT[,lapply(.SD, mean)], "mean R2r over 1000 repetitions scaled preds")
 
 hist(means)
 plot(density(means))
@@ -183,11 +222,17 @@ mean(r2rs)
 params <- parms
 
 
+#logisZ <- relt[, (Nrel - Nrel / 3 + 1): Nrel, drop = F]
+#N <- params$N
+#nvar <- (Nrel / 3)
 
-# bayesian methods and other suggestion
+
+# check if it works
 for (i in 1:24){
   params <- c(fixedParams, variedParams[i,])
   X <- simX(params)
+  Y <- simY(params, X[,grep("^Rel")])
+  R <- simR(params, X, Y)
 }
 
 ###############################################
