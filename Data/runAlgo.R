@@ -1,6 +1,6 @@
 ###--------------------------------------------------------------------------###
 
-fitAlgo <- function(params, X, target, rpt){
+fitAlgo <- function(params, X, target, rpt, tp){
   
   ranks <- data.table::data.table(array(
     data = NA, dim = c(ncol(X), length(params$rankers))))
@@ -113,9 +113,11 @@ simRep <- function(fixed, varied, rpt, ncond=4){
       X <- simX(conds)
       Y <- simY(conds, X[,grepl("^rel", colnames(X))])
     }
-    #R <- factor(simR(conds, X, Y), labels = c("c", "m"))
+    # mssng <- simR(conds, X, Y)
+    #R <- factor(mssn$R, labels = c("c", "m"))
+    # tp <- mssng$predsR
     R <- factor(rbinom(conds$N, 1, 0.5), labels = c("c", "m"))
-    fitAlgo(conds, X, R, rpt)
+    fitAlgo(conds, X, R, tp, rpt)
     message(paste0("Condition ", i, "out of ", nrow(varied), 
                    "in repetition ", rpt, "finished!"))
   }
