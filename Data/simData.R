@@ -153,7 +153,7 @@ simX <- function(params){
                      prfx = "Irrel")
   
   # join by reference
-  return(merge.data.table(relt, irrelt, all = T))
+  return(cbind(relt, irrelt))
   
 }
 
@@ -180,7 +180,7 @@ simY <- function(params, Xrel){
   e <- residuals(lm(x ~ X)) 
   X.dual <- with(svd(X), (params$N-1)*u %*% diag(ifelse(d > 0, 1/d, 0)) %*% t(v))
   sigma2 <- c((1 - cors %*% cov(X.dual) %*% cors) / var(e))
-  return(X.dual %*% cors + sqrt(sigma2)*e)
+  return(as.data.table(X.dual %*% cors + sqrt(sigma2)*e, value.name="Y"))
 }
 
 ###--------------------------------------------------------------------------###
