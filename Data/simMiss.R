@@ -25,7 +25,7 @@ simProbit <- function(params, X, Y){
         .SDcols = contNms]
   
   # apply some transformations to any discrete X
-  catNms <- names(X.temp)[grep("(^RelBin)|(^RelOrd)", names(X.temp))] # for safety
+  catNms <- names(X.temp)[grep("(^RelBin)|(^RelOrd)", names(X.temp))]
   if (is.null(params$trans)){
     transf <- lapply(1:length(catNms), function(x) identity)
   } else transf <- unlist(params$trans)
@@ -34,7 +34,7 @@ simProbit <- function(params, X, Y){
   
   # scale variables and assign moderately large coefs, the largest if mnar
   allNms <- c(contNms, catNms)
-  X.temp[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
+  X.temp[, (allNms) := lapply(.SD, scale, scale = FALSE), .SDcols = allNms]
   coefsRel <- runif(length(allNms), 0.4, 0.5)
   if (is.mnar) coefsRel[which(allNms == names(Y))] <- max(coefsRel)*1.5
   
@@ -52,7 +52,7 @@ simProbit <- function(params, X, Y){
     
   # set mean as threshold and discretize at z*theoretical SD above it
   out[, LP := LP + MASS::mvrnorm(params$N, 0, resSig)]
-  return(out[, as.numeric(LP > (mean(LP) + (z) * (sd.LP)))])
+  return(out[, as.numeric(LP > ((z) * (sd.LP)))])
   
 }
 

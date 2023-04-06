@@ -156,6 +156,9 @@ parms$R2r
 
 meansDT <- data.table::data.table(rep(NA, 1000),rep(NA, 1000),rep(NA, 1000),rep(NA, 1000))
 r2rsDT <- data.table::data.table(rep(NA, 1000),rep(NA, 1000),rep(NA, 1000),rep(NA, 1000))
+
+meansDT2 <- data.table::data.table(rep(NA, 200),rep(NA, 200),rep(NA, 200),rep(NA, 200))
+r2rsDT2 <- data.table::data.table(rep(NA, 200),rep(NA, 200),rep(NA, 200),rep(NA, 200))
 # rows 
 
 i1 <- c(fixedParams, variedParams[pr==0.05 & mechanism=="mar" & pm==0.1 & corrPred==1,])
@@ -204,6 +207,44 @@ for (i in 1:4){
   countr <- countr + 1
 }
 
+countr <- 1
+for (i in 1:4){
+  mech <- test.conds[i,"mechanism"]
+  perc <- test.conds[i,"pm"]
+  parms <- c(fixedParams, variedParams[pr==0.05 & mechanism==(mech) 
+                                       & pm==(perc) & corrPred==1,])
+  
+  means <- rep(NA, 200)
+  r2r <- rep(NA, 200)
+  for (j in 1:200){
+    X <- simX(parms)
+    nms <- names(X)[grepl("^Rel", names(X))]
+    Y <- simY(parms, X[, ..nms])
+    R <- simR(parms, X, Y)
+    target <- R$R
+    means[j] <- mean(target) 
+    target <- factor(target, labels = c("c", "m"))
+    #require(performance)
+    is.mnar <- params$mechanism == "mnar"
+    Xt <- cbind(data.table::copy(X), Y[,..is.mnar]) 
+    contNms <- c(names(Xt)[grep("^RelCont", names(Xt))], names(Y)[is.mnar])
+    Xt[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = params$theta),
+       .SDcols = contNms]
+    catNms <- names(Xt)[grep("(^RelBin)|(^RelOrd)", names(Xt))]
+    Xt[, (catNms) := mapply({function(f, x) f(x)}, unlist(params$trans), .SD, SIMPLIFY = FALSE), 
+       .SDcols = catNms]
+    m <- glm(target~., data = cbind(as.data.frame(Xt),target), 
+             family = binomial("probit"))
+    r2r[j] <- performance::r2_mckelvey(m)
+    #parms$R2r
+    
+  }
+  
+  meansDT2[, (paste0("V", countr)) := means]
+  r2rsDT2[, (paste0("V", countr)) := r2r]
+  countr <- countr + 1
+}
+
 
 saveRDS(meansDT[, lapply(.SD, mean)], "mean pm over 1000 repetitions")
 saveRDS(r2rsDT[,lapply(.SD, mean)], "mean R2r over 1000 repetitions")
@@ -227,13 +268,17 @@ params <- parms
 #nvar <- (Nrel / 3)
 
 
+a <- Sys.time()
 # check if it works
 for (i in 1:24){
   params <- c(fixedParams, variedParams[i,])
   X <- simX(params)
-  Y <- simY(params, X[,grep("^Rel")])
+  nms <- names(X)[grepl("^Rel", names(X))]
+  Y <- simY(params, X[,..nms])
   R <- simR(params, X, Y)
 }
+b <- Sys.time()
+print(b-a)
 
 ###############################################
 #################### check ####################

@@ -15,9 +15,46 @@ diag(R) <- 1
 
 #pear <- sin(0.5*pi*S)
 S <- rlkjcorr(1, 4, 1)
+
+# so I could generate a correlation matrix
+# then generate correlations Xrel-Y
+# then simulate with a copula to have such population
+# could also compute 
+difs_sam <- array(NA, dim=c(4,4,1000))
+difs_pop <- array(NA, dim=c(4,4,1000))
+
+for (i in 1:1000){
+  AB <- MASS::mvrnorm(1000,c(0,0,0,0),S)
+  U <- pnorm(AB)
+  x <- qgamma(U[,1],shape=0.2)
+  y <- qnorm(U[,2],0,1)
+  b1 <- qbinom(U[,3],1,0.5)
+  b2 <- qlogis(U[,4,drop=F],0,1)
+  cts <- genOrd(b2, t(as.matrix(params$popProbsRel[[1]][1,])),1000)
+  ABC <- cbind(x, y, b1, b2)
+  ABC2 <- cbind(z, y, b1, b2)
+  difs_sam[,,i] <- cor(AB, method="kendall") - cor(ABC,method = "kendall")
+  difs_pop[,,i] <- 2/pi*asin(S) - cor(ABC,method = "kendall")
+}
+
+apply(difs_sam, c(1,2), range)
+apply(difs_pop,c(1,2),range)
+
+# check what are the differences with the package mvdc
+# have exact R^2 in y each time
+# or generate with assuming a distribution on Y (so add correlations to pop matrix)
+# but then R^2 is also not preserved, since only non-parametric correlations are preserved
+# which means in any case the population R^2 is not there
+# but that's actually fine: I don't want linearity, that's why I'm doing all of this
+# I just want some dependence between X and Y
+# and if I know pop Kendall's correlation, that's fine
+
+# for some reason R does not work: try tomorrow with only scaling
+# and see if Y has enough of importance, else just scale them and add 0 as threshold
+# and that's it
+
 pm <- sin(S*(pi/2))
-AB <- rmvnorm(mean=c(0,0,0,0),sig=S,n=1000)
-cor(AB, method="kendall")
+
 cor(AB)
 S
 
@@ -26,14 +63,13 @@ U <- pnorm(AB)
 cor(U, method = "kendall")
 #plot(1:1000,U[,1])
 #hist(U[,1])
-x <- qgamma(U[,1],2)
-y <- qbeta(U[,2],1,2)
+x <- qgamma(U[,1],shape=0.2)
+y <- qnorm(U[,2],0,1)
 b1 <- qbinom(U[,3],1,0.5)
-b2 <- qbinom(U[,4],1,0.5)
-z <- ifelse(U[,1] <= 0.2, 0, 
-            ifelse(U[,1] <= 0.5, 1, 
-                   ifelse(U[,1] < 0.6, 2,
-                          ifelse(U[,1] < 0.8, 3, 4))))
+b2 <- qlogis(U[,4,drop=F],0,1)
+cts <- genOrd(b2, t(as.matrix(params$popProbsRel[[1]][1,])),1000)
+ABC <- cbind(x, y, b1, cts)
+
 ABC <- cbind(x, y, b1, b2)
 ABC2 <- cbind(z, y, b1, b2)
 cor(ABC,method = "kendall")
