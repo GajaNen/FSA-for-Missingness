@@ -12,16 +12,19 @@ simSpline <- function(x, deg=3, knots=1, coefSpl=NULL){
 
 ###--------------------------------------------------------------------------###
 
+# generate a binary outcome with probit gam (splines for cont and nonlinear
+# transformations of discrete variables) for a fixed R^2 in the latent variable
+
 simProbit <- function(params, X, Y){
 
   z <- qnorm(1-params$pm)
-  #out <- data.table::data.table(LP=rep(NA, params$N))
+  out <- data.table::data.table(LP=rep(NA, params$N))
   is.mnar <- params$mechanism == "mnar"
-  X.temp <- cbind(data.table::copy(X), Y[,..is.mnar]) 
+  X.temp <- cbind(data.table::copy(X), data.table::copy(Y[,..is.mnar]))
 
   # apply splines to continuous X (and y if is.mnar)
   contNms <- c(names(X.temp)[grep("^RelCont", names(X.temp))], names(Y)[is.mnar])
-  X.temp[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = params$theta),
+  X.temp[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
         .SDcols = contNms]
   
   # apply some transformations to any discrete X
@@ -34,13 +37,10 @@ simProbit <- function(params, X, Y){
   
   # scale variables and assign moderately large coefs, the largest if mnar
   allNms <- c(contNms, catNms)
-  X.temp[, (allNms) := lapply(.SD, scale, scale = FALSE), .SDcols = allNms]
-  coefsRel <- runif(length(allNms), 0.4, 0.5)
+  coefsRel <- rep(1, length(allNms))
+  X.temp[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
+  coefsRel <- runif(length(allNms), 0.3, 0.4)
   if (is.mnar) coefsRel[which(allNms == names(Y))] <- max(coefsRel)*1.5
-  
-  # LP
-  out <- data.table::data.table(as.matrix(X.temp[, ..allNms]) %*% coefsRel)
-  data.table::setnames(out, "LP")
   
   # define residual variance for the linear predictor
   explSig <- t(coefsRel) %*% cov(X.temp[, ..allNms]) %*% coefsRel
@@ -50,9 +50,10 @@ simProbit <- function(params, X, Y){
   # define theoretical sd of lp
   sd.LP <- as.numeric(sqrt(explSig + resSig))
     
-  # set mean as threshold and discretize at z*theoretical SD above it
-  out[, LP := LP + MASS::mvrnorm(params$N, 0, resSig)]
-  return(out[, as.numeric(LP > ((z) * (sd.LP)))])
+  # discretise at z*theoretical SD above mean of linear predictor
+  out[, LP := as.matrix(X.temp[, ..allNms]) %*% (coefsRel) + 
+        stats::rnorm(params$N, 0, sqrt(resSig))]
+  return(out[, as.numeric(LP > (mean(LP) + (z) * (sd.LP)))])
   
 }
 
