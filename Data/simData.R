@@ -35,45 +35,29 @@ genOrd <- function(logisZ, lP, N){
 # generate relevant variables of mixed types with a given correlation structure
 # (only non-parametric correlation structure retained)
 
-# generete mvrnorm
-# norm
-# apply each q appropriate number of times
-# include Y
-
-getSymMat <- function(rhos, dims){
+simCorMix <- function(params, Nvar, prfx, addY=NULL){
   
-  m <- matrix(NA,nrow=dims,ncol=dims)
-  m[lower.tri(m)] <- rhos
-  diag(m) <- 1
-  m[upper.tri(m)] <- t(m)[upper.tri(m)]
-  m
-}
-
-genCorMix <- function(params, Nvar, prfx){
-  
-  #min(eigen(S, symmetric = TRUE)$values) <= 0
-  if (params$corrPred && (prfx=="Rel")) {
-    S <- getSymMat(unlist(params$cormat), Nvar)
-  } else S <- diag(1, nrow=Nvar)
   paramMarg <- c(unlist(params[[paste0("normParam", prfx)]], recursive = F),
                  unlist(params[[paste0("gamParam", prfx)]], recursive = F),
                  unlist(params[[paste0("binParam", prfx)]], recursive = F),
                  lapply(1:(Nvar / 3),
-                        function(x) c(location = 0, scale = 1)))
-  funcs <- c(rep(c(qnorm), Nvar / 6),
-             rep(c(qgamma), Nvar / 6),
-             rep(c(qbinom), Nvar / 3),
-             rep(c(qlogis), Nvar / 3))
-  dts <- data.table::as.data.table(pnorm(mvnfast::rmvn(1000,rep(0, Nvar),S)))
-  
-  #freqs <- c(rep(Nvar/6,2),rep(Nvar/3,2))
-
-  dts[, names(dts) :=  mapply(function(f, x) do.call(f, c(list(unname(.SD)),x)), 
-                              funcs, paramMarg),
-      .SDcols = names(dts)]
-  # and Y
-
-  
+                        function(x) c(location = 0, scale = 1)),
+                 data.table::fifelse(addY==TRUE, list(params$paramY), list(1)))
+  if (params$corrPred && (prfx=="Rel")) {
+    rhos <- unlist(params$cormat)
+  } else {
+    rhos <- unlist(sapply(1:Nvar, function(x) c(rep(0, Nvar-x), unlist(params$corXY)[x])))
+  } 
+  if (addY) Nsim <- Nvar + 1 else Nsim <- Nvar
+  copula <- copula::normalCopula(param = rhos, dim = Nsim, dispstr = "un")
+  joint <- copula::mvdc(copula = copula, 
+                        margins = c(rep("norm", Nvar / 6),
+                                    rep("gamma", Nvar / 6),
+                                    rep("binom", Nvar /3),
+                                    rep("logis", Nvar / 3),
+                                    fifelse(addY==T, params$margY, "")), 
+                        paramMargins = lapply(paramMarg, function(x) as.list(x)))
+  relt <- copula::rMvdc(1000, joint)
   ords <- genOrd(logisZ = relt[, (Nvar - Nvar / 3 + 1): Nvar], 
                  lP = params[[paste0("popProbs", prfx)]][[1]],
                  N = params$N)
@@ -81,7 +65,7 @@ genCorMix <- function(params, Nvar, prfx){
   relt[, names(ords) := ords]
   nm <- c(unlist(lapply(c("Cont", "Bin"), paste0, 1:(Nvar / 3))),
           names(ords)[grepl("^Ord", names(ords))])
-  data.table::setnames(relt, paste0(prfx, nm))
+  data.table::setnames(relt, c(paste0(prfx, nm), fifelse(addY==T,"Y","")))
   return(relt)
 }
 
@@ -89,7 +73,7 @@ genCorMix <- function(params, Nvar, prfx){
 
 # simulate correlated or independent relevant and irrelevant predictors
 
-simX <- function(params){
+simDat <- function(params){
   
   Nrel <- params$pr * params$Ntotal
   Nirrl <- params$Ntotal - Nrel
@@ -97,8 +81,8 @@ simX <- function(params){
                                         irrelevant features each must
                                         be a multiple of 6. Adjust Ntotal
                                         or pr.")
-  allv <- genCorMix(params = params, Nvar = Nrel, prfx = "Rel")
-  irrelt <- genCorMix(params = params, Nvar = Nirrl, prfx = "Irrel")
+  allv <- simCorMix(params = params, Nvar = Nrel, prfx = "Rel", addY=TRUE)
+  irrelt <- simCorMix(params = params, Nvar = Nirrl, prfx = "Irrel")
   allv[,names(irrelt) := irrelt]
   return(allv)
   
