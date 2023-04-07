@@ -4,30 +4,17 @@
 
 genOrd <- function(logisZ, lP, N){
   
-  cprop <- t(apply(lP, 1, cumsum))
-  if (any(apply(cprop, 1, max) != rep(1, nrow(cprop)))){
-    stop(paste0("Baseline probabilities of ordinal variables sum 
-                  up to:", apply(cprop, 1, max), "instead to 1 for each."))
+  cprop <- cumsum(lP)
+  if (max(cprop) != 1){
+    stop("Baseline probabilities of all ordinal variables must sum to 1.")
   }
   quant <- stats::qlogis(cprop)
-  ordDat <- data.table::data.table(NULL)
-  maxs <- max.col(cprop, ties.method = "first")
-
-  for (i in 1:nrow(quant)){
-    LogisZi <- logisZ[, i]
-    matlp <- matrix(rep(quant[i,], N),
-                    ncol = ncol(quant),
-                    byrow = TRUE)
-    locateGrp <- (LogisZi > cbind(-Inf, matlp))
-    cats <- apply(locateGrp, 1, sum)
-    if (maxs[i] < 5){
-      ordDat[, paste0("Ord", i, "Cat", 2:maxs[i]) := 
-               model.matrix(~factor(matrix(cats)))[,-1]]
-    } else ordDat[, paste0("Ord",i) := cats]
-
-  }
-  
-  return(ordDat)
+  matlp <- matrix(rep(quant, N),
+                  ncol = length(quant),
+                  byrow = TRUE)
+  grp <- (logisZ > cbind(-Inf, matlp))
+  cats <- apply(grp, 1, sum)
+  return(cats)
 }
 
 ###--------------------------------------------------------------------------###
@@ -37,35 +24,33 @@ genOrd <- function(logisZ, lP, N){
 
 simCorMix <- function(params, Nvar, prfx, addY=NULL){
   
+  namY <- c("Y")[addY]
   paramMarg <- c(unlist(params[[paste0("normParam", prfx)]], recursive = F),
                  unlist(params[[paste0("gamParam", prfx)]], recursive = F),
                  unlist(params[[paste0("binParam", prfx)]], recursive = F),
                  lapply(1:(Nvar / 3),
                         function(x) c(location = 0, scale = 1)),
-                 data.table::fifelse(addY==TRUE, list(params$paramY), list(1)))
-  if (params$corrPred && (prfx=="Rel")) {
-    rhos <- unlist(params$cormat)
-  } else {
-    rhos <- unlist(sapply(1:Nvar, function(x) c(rep(0, Nvar-x), unlist(params$corXY)[x])))
-  } 
-  if (addY) Nsim <- Nvar + 1 else Nsim <- Nvar
+                 ifelse(addY==T, list(params$paramY),0))
+  if (prfx=="Rel") {
+    rhos <- unlist(params$corMatRel)
+  } else rhos <- unlist(params$corMatIrrel)
+  if (!is.null(addY)) Nsim <- Nvar + 1 else Nsim <- Nvar
   copula <- copula::normalCopula(param = rhos, dim = Nsim, dispstr = "un")
   joint <- copula::mvdc(copula = copula, 
                         margins = c(rep("norm", Nvar / 6),
                                     rep("gamma", Nvar / 6),
                                     rep("binom", Nvar /3),
                                     rep("logis", Nvar / 3),
-                                    fifelse(addY==T, params$margY, "")), 
+                                    params$margY[addY]), 
                         paramMargins = lapply(paramMarg, function(x) as.list(x)))
-  relt <- copula::rMvdc(1000, joint)
-  ords <- genOrd(logisZ = relt[, (Nvar - Nvar / 3 + 1): Nvar], 
-                 lP = params[[paste0("popProbs", prfx)]][[1]],
-                 N = params$N)
-  relt <- data.table::as.data.table(relt[, 1:(Nvar - Nvar / 3)])
-  relt[, names(ords) := ords]
-  nm <- c(unlist(lapply(c("Cont", "Bin"), paste0, 1:(Nvar / 3))),
-          names(ords)[grepl("^Ord", names(ords))])
-  data.table::setnames(relt, c(paste0(prfx, nm), fifelse(addY==T,"Y","")))
+  relt <- data.table::as.data.table(copula::rMvdc(1000, joint))
+  nms <- unlist(lapply(list("Cont", "Bin", "Ord"), 
+                       function(x) paste0(prfx, x, 1:(Nvar / 3))))
+  setnames(relt, c(nms,namY))
+  ords <- names(relt)[grep("^.*Ord", names(relt))]
+  probs <- unlist(apply(params[[paste0("popProbs", prfx)]][[1]],1,list),recursive = F)
+  relt[, (ords) := mapply(genOrd, .SD, probs, MoreArgs = list(N=params$N), SIMPLIFY = F), 
+       .SDcols = ords]
   return(relt)
 }
 
