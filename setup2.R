@@ -58,6 +58,11 @@ cors_hp <- a*cors
 cm_hp <- cbind(rbind(cm_hp, cors_hp), c(cors_hp,1))
 #cors_hp %*% solve(cm_hp) %*% cors_hp
 
+Nt <- fixedParams$Ntotal
+
+cm_lp_diag <- unlist(sapply(1:(Nt*0.05), function(x) c(rep(0, Nt*0.05-x), cors_lp[x])))
+cm_hp_diag <- unlist(sapply(1:(Nt*0.2), function(x) c(rep(0, Nt*0.2-x), cors_hp[x])))
+
 
 # varied factors
 variedParams <- data.table::as.data.table(expand.grid(
@@ -125,14 +130,27 @@ variedParams[, popProbsIrrel :=
                                             byrow=T))]
 
 # define correlation matrix which differs between percentage of relevant variables
-# for the correlated predictors case
+# for the correlated predictors case and uncorrelated case
 
-variedParams[pr==0.05 & corrPred, cormat := list(cm_lp[lower.tri(cm_lp)])]
-variedParams[pr!=0.05 & corrPred, cormat := list(cm_hp[lower.tri(cm_hp)])]
+variedParams[pr==0.05 & corrPred, corMatRel := list(cm_lp[lower.tri(cm_lp)])]
+variedParams[pr!=0.05 & corrPred, corMatRel := list(cm_hp[lower.tri(cm_hp)])]
 
-variedParams[pr==0.05, corXY := list(cors_lp)]
-variedParams[pr!=0.05, corXY := list(cors_hp)]
+variedParams[pr==0.05 & corrPred==0, corMatRel := list(cm_lp_diag)]
+variedParams[pr!=0.05 & corrPred==0, corMatRel := list(cm_hp_diag)]
+
+variedParams[, corMatIrrel := lapply(pr, function(x) rep(0, 
+                                                         (Nt*(1-x))*(Nt*(1-x)-1)/2))]
 
 variedParams[, theta := list(c(0.3, 0.5, 0.6, 0.1, 0.2))]
 
 params <- c(fixedParams, variedParams[1,])
+
+
+a <- Sys.time()
+# check if it works
+for (i in 1:24){
+  parms <- c(fixedParams, variedParams[i,])
+  dat <- simDat(parms)
+}
+b <- Sys.time()
+print(b-a)
