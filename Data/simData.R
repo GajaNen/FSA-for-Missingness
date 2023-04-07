@@ -21,10 +21,10 @@ genOrd <- function(logisZ, lP, N){
     locateGrp <- (LogisZi > cbind(-Inf, matlp))
     cats <- apply(locateGrp, 1, sum)
     if (maxs[i] < 5){
-      cats <- model.matrix(~factor(matrix(cats)))[,-1] # make dummies 
-      coln <- paste0("Ord", i, "Cat", 2:maxs[i]) # appropriate naming
-    } else coln <- paste0("Ord",i)
-    ordDat[, (coln) := cats]
+      ordDat[, paste0("Ord", i, "Cat", 2:maxs[i]) := 
+               model.matrix(~factor(matrix(cats)))[,-1]]
+    } else ordDat[, paste0("Ord",i) := cats]
+
   }
   
   return(ordDat)
@@ -35,24 +35,45 @@ genOrd <- function(logisZ, lP, N){
 # generate relevant variables of mixed types with a given correlation structure
 # (only non-parametric correlation structure retained)
 
+# generete mvrnorm
+# norm
+# apply each q appropriate number of times
+# include Y
+
+getSymMat <- function(rhos, dims){
+  
+  m <- matrix(NA,nrow=dims,ncol=dims)
+  m[lower.tri(m)] <- rhos
+  diag(m) <- 1
+  m[upper.tri(m)] <- t(m)[upper.tri(m)]
+  m
+}
+
 genCorMix <- function(params, Nvar, prfx){
   
+  #min(eigen(S, symmetric = TRUE)$values) <= 0
+  if (params$corrPred && (prfx=="Rel")) {
+    S <- getSymMat(unlist(params$cormat), Nvar)
+  } else S <- diag(1, nrow=Nvar)
   paramMarg <- c(unlist(params[[paste0("normParam", prfx)]], recursive = F),
                  unlist(params[[paste0("gamParam", prfx)]], recursive = F),
                  unlist(params[[paste0("binParam", prfx)]], recursive = F),
                  lapply(1:(Nvar / 3),
                         function(x) c(location = 0, scale = 1)))
-  if (params$corrPred && (prfx=="Rel")) {
-    rhos <- unlist(params$cormat)
-  } else rhos <- rep(0, Nvar*(Nvar-1)/2)
-  copula <- copula::normalCopula(param = rhos, dim = Nvar, dispstr = "un")
-  joint <- copula::mvdc(copula = copula, 
-                        margins = c(rep("norm", Nvar / 6),
-                                    rep("gamma", Nvar / 6),
-                                    rep("binom", Nvar /3),
-                                    rep("logis", Nvar / 3)), 
-                        paramMargins = lapply(paramMarg, function(x) as.list(x)))
-  relt <- copula::rMvdc(1000, joint)
+  funcs <- c(rep(c(qnorm), Nvar / 6),
+             rep(c(qgamma), Nvar / 6),
+             rep(c(qbinom), Nvar / 3),
+             rep(c(qlogis), Nvar / 3))
+  dts <- data.table::as.data.table(pnorm(mvnfast::rmvn(1000,rep(0, Nvar),S)))
+  
+  #freqs <- c(rep(Nvar/6,2),rep(Nvar/3,2))
+
+  dts[, names(dts) :=  mapply(function(f, x) do.call(f, c(list(unname(.SD)),x)), 
+                              funcs, paramMarg),
+      .SDcols = names(dts)]
+  # and Y
+
+  
   ords <- genOrd(logisZ = relt[, (Nvar - Nvar / 3 + 1): Nvar], 
                  lP = params[[paste0("popProbs", prfx)]][[1]],
                  N = params$N)
@@ -103,13 +124,5 @@ simY <- function(params, X){
   setnames(y, "Y")
   return(y)
 }
-
-# add correlations to cormatrix with Y
-
-# timing, error logs will add some other time
-# tomorrow evening I'm sending it
-# and then 3 days to write until sim study
-# then one week to run, analysis, other code and simulation section by monday 
-# then he checks sim study and discussion section
 
 ###--------------------------------------------------------------------------###
