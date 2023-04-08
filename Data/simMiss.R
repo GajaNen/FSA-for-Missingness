@@ -65,14 +65,10 @@ simProbit <- function(params, dat){
 simR <- function(params, dat){
   
   if (params$mechanism == "mcar"){
-    preds <- NULL
-    R <- rbinom(params$N, size = 1, prob = params$pm)
-  } else {
-    out.lst <- simProbit(params, dat)
-    preds <- out.lst$preds
-    R <- out.lst$R
-  }
-  return(list(R=R, preds=preds))
+    return(list(R=rbinom(params$N, size = 1, prob = params$pm),
+                preds=NULL))
+  } else return(simProbit(params, dat))
+  
 }
 
 ###--------------------------------------------------------------------------###
