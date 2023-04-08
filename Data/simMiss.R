@@ -14,36 +14,36 @@ simSpline <- function(x, deg=3, knots=1, coefSpl=NULL){
 
 # generate a binary outcome with probit gam (splines for cont and nonlinear
 # transformations of discrete variables) for a fixed R^2 in the latent variable
+# mar or mnar data
 
-simProbit <- function(params, X, Y){
+simProbit <- function(params, dat){
 
   z <- qnorm(1-params$pm)
   out <- data.table::data.table(LP=rep(NA, params$N))
   is.mnar <- params$mechanism == "mnar"
-  X.temp <- cbind(data.table::copy(X), data.table::copy(Y[,..is.mnar]))
+  contNms <- c(names(dat)[grep("^RelCont", names(dat))], c("Y")[is.mnar])
+  catNms <- names(dat)[grep("(^RelBin)|(^RelOrd)", names(dat))]
+  allNms <- c(contNms, catNms)
+  dat.rel <- data.table::copy(dat[,..allNms])
 
   # apply splines to continuous X (and y if is.mnar)
-  contNms <- c(names(X.temp)[grep("^RelCont", names(X.temp))], names(Y)[is.mnar])
-  X.temp[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
-        .SDcols = contNms]
+  dat.rel[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
+          .SDcols = contNms]
   
   # apply some transformations to any discrete X
-  catNms <- names(X.temp)[grep("(^RelBin)|(^RelOrd)", names(X.temp))]
   if (is.null(params$trans)){
     transf <- lapply(1:length(catNms), function(x) identity)
   } else transf <- unlist(params$trans)
-  X.temp[, (catNms) := mapply({function(f, x) f(x)}, transf, .SD, SIMPLIFY = FALSE), 
-        .SDcols = catNms]
+  dat.rel[, (catNms) := mapply({function(f, x) f(x)}, transf, .SD, SIMPLIFY = FALSE), 
+          .SDcols = catNms]
   
   # scale variables and assign moderately large coefs, the largest if mnar
-  allNms <- c(contNms, catNms)
-  coefsRel <- rep(1, length(allNms))
-  X.temp[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
+  dat.rel[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
   coefsRel <- runif(length(allNms), 0.3, 0.4)
-  if (is.mnar) coefsRel[which(allNms == names(Y))] <- max(coefsRel)*1.5
+  if (is.mnar) coefsRel[which(allNms == "Y")] <- max(coefsRel)*1.5
   
   # define residual variance for the linear predictor
-  explSig <- t(coefsRel) %*% cov(X.temp[, ..allNms]) %*% coefsRel
+  explSig <- t(coefsRel) %*% cov(dat.rel) %*% coefsRel
   if (params$R2r %in% c(0,1)) stop('R**2 for indicator must not be 0 or 1.')
   resSig <- (explSig / params$R2r) - explSig
   
@@ -51,9 +51,10 @@ simProbit <- function(params, X, Y){
   sd.LP <- as.numeric(sqrt(explSig + resSig))
     
   # discretise at z*theoretical SD above mean of linear predictor
-  out[, LP := as.matrix(X.temp[, ..allNms]) %*% (coefsRel) + 
+  out[, LP := as.matrix(dat.rel) %*% (coefsRel) + 
         stats::rnorm(params$N, 0, sqrt(resSig))]
-  return(out[, as.numeric(LP > (mean(LP) + (z) * (sd.LP)))])
+  return(list(R=out[, as.numeric(LP > (mean(LP) + (z) * (sd.LP)))],
+              preds=allNms))
   
 }
 
@@ -61,16 +62,17 @@ simProbit <- function(params, X, Y){
 
 # simulate missingness with a probit model or randomly
 
-simR <- function(params, X, Y){
+simR <- function(params, dat){
   
   if (params$mechanism == "mcar"){
     preds <- NULL
-    out <- rbinom(params$N, size = 1, prob = params$pm)
+    R <- rbinom(params$N, size = 1, prob = params$pm)
   } else {
-    preds <- names(X)[grepl("^Rel", names(X))]
-    out <- simProbit(params, X[,..preds], Y)
+    out.lst <- simProbit(params, dat)
+    R <- out.lst$R
+    preds <- out.lst$preds
   }
-  return(list(R=out, predsR=preds))
+  return(list(R=R, preds=preds))
 }
 
 ###--------------------------------------------------------------------------###
