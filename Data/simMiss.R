@@ -69,8 +69,8 @@ simR <- function(params, dat){
     R <- rbinom(params$N, size = 1, prob = params$pm)
   } else {
     out.lst <- simProbit(params, dat)
-    R <- out.lst$R
     preds <- out.lst$preds
+    R <- out.lst$R
   }
   return(list(R=R, preds=preds))
 }
