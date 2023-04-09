@@ -1,12 +1,13 @@
 ###--------------------------------------------------------------------------###
 
-# generate ordinal variables from quantiles of logistic distribution
+# generate ordinal variable from quantiles of logistic distribution given
+# baseline (population) probabilities of each category
 
 genOrd <- function(logisZ, lP, N){
   
   cprop <- cumsum(lP)
   if (max(cprop) != 1){
-    stop("Baseline probabilities of all ordinal variables must sum to 1.")
+    stop("Population probabilities of each ordinal variable must sum to 1.")
   }
   quant <- stats::qlogis(cprop)
   matlp <- matrix(rep(quant, N),
@@ -19,39 +20,38 @@ genOrd <- function(logisZ, lP, N){
 
 ###--------------------------------------------------------------------------###
 
-# generate relevant variables of mixed types with a given correlation structure
-# (only non-parametric correlation structure retained)
+# generate (ir)relevant variables of mixed types and a given correlation structure
+# with a Gaussian copula (only non-parametric correlation structure retained)
 
-simCorMix <- function(params, Nvar, prfx, addY=NULL){
+# this function can have a side effect of modifying the original DT if this
+# DT is an input together with the names of relevant variables
+# otherwise a new DT is constructed within function
+
+simCorMix <- function(params, Nvar, prfx, addY=NULL, dts=NULL, nms=NULL){
   
   namY <- c("Y")[addY]
-  paramMarg <- c(unlist(params[[paste0("normParam", prfx)]], recursive = F),
-                 unlist(params[[paste0("gamParam", prfx)]], recursive = F),
-                 unlist(params[[paste0("binParam", prfx)]], recursive = F),
-                 lapply(1:(Nvar / 3),
-                        function(x) c(location = 0, scale = 1)),
-                 ifelse(addY==T, list(params$paramY),0))
-  if (prfx=="Rel") {
-    rhos <- unlist(params$corMatRel)
-  } else rhos <- unlist(params$corMatIrrel)
+  S <- params[[paste0("corMat",prfx)]][[1]]
   if (!is.null(addY)) Nsim <- Nvar + 1 else Nsim <- Nvar
-  copula <- copula::normalCopula(param = rhos, dim = Nsim, dispstr = "un")
-  joint <- copula::mvdc(copula = copula, 
-                        margins = c(rep("norm", Nvar / 6),
-                                    rep("gamma", Nvar / 6),
-                                    rep("binom", Nvar /3),
-                                    rep("logis", Nvar / 3),
-                                    params$margY[addY]), 
-                        paramMargins = lapply(paramMarg, function(x) as.list(x)))
-  relt <- data.table::as.data.table(copula::rMvdc(1000, joint))
-  nms <- unlist(lapply(list("Cont", "Bin", "Ord"), 
-                       function(x) paste0(prfx, x, 1:(Nvar / 3))))
-  setnames(relt, c(nms,namY))
-  ords <- names(relt)[grep("^.*Ord", names(relt))]
-  probs <- unlist(apply(params[[paste0("popProbs", prfx)]][[1]],1,list),recursive = F)
-  relt[, (ords) := mapply(genOrd, .SD, probs, MoreArgs = list(N=params$N), SIMPLIFY = F), 
+  if (is.null(dts))  {
+    dts <- data.table::setDT(lapply(1:Nsim, rep, NA, 1000))
+    nms <- names(dts)
+  }
+  dts[, (nms) := 
+        data.table::as.data.table(pnorm(mvnfast::rmvn(1000, rep(0,Nsim), S)))]
+  reps <- c(Nvar/6, Nvar/6, Nvar/3, Nvar/3, 1*addY)
+  dists <- unlist(mapply(rep, names(params$map.funcs)[seq_along(reps)], reps),
+                  use.names = FALSE)
+  dts[, (nms) := mapply(function(x,y,z) params$map.funcs[[y]](x, z[1],z[2]), 
+                            .SD, dists, c(params[[paste0("params",prfx)]][[1]],
+                                          list(params$paramY)[addY]), 
+                            SIMPLIFY = FALSE),
+      .SDcols = nms]
+  cm.reps <- cumsum(reps)
+  ords <- (cm.reps[3]+1):cm.reps[4]
+  probs <- lapply(1:(Nvar/3), function(x) params[[paste0("popProbs", prfx)]][[1]][x,])
+  dts[, (ords) := mapply(genOrd, .SD, probs, MoreArgs = list(N=params$N), SIMPLIFY = F), 
        .SDcols = ords]
-  return(relt)
+  return(dts)
 }
 
 ###--------------------------------------------------------------------------###
@@ -66,32 +66,20 @@ simDat <- function(params){
                                         irrelevant features each must
                                         be a multiple of 6. Adjust Ntotal
                                         or pr.")
-  allv <- simCorMix(params = params, Nvar = Nrel, prfx = "Rel", addY=TRUE)
-  irrelt <- simCorMix(params = params, Nvar = Nirrl, prfx = "Irrel")
-  allv[,names(irrelt) := irrelt]
-  return(allv)
+  out <- data.table::setDT(lapply(1:(params$Ntotal+1),
+                                  function (x) rep(NA, 1000)))
+  data.table::setnames(out, c(paste0("Rel", rep(c("Cont", "Bin", "Ord"),each=Nrel/3),1:(Nrel/3)),
+                              "Y", # this is ugly but works
+                              paste0("Irrel", rep(c("Cont", "Bin", "Ord"),each=Nirrl/3),1:(Nirrl/3))))
+  nmsRel <- names(out)[grep("(^Rel)|Y", names(out))]
+  simCorMix(params = params, Nvar = Nrel, prfx = "Rel", addY=TRUE, dts=out, nms=nmsRel)
+  nmsIrrl <- names(out)[grep("^Irrel", names(out))]
+  simCorMix(params = params, Nvar = Nirrl, prfx = "Irrel", dts = out, nms=nmsIrrl)
+  return(out)
+
+  
   
 }
 
 ###--------------------------------------------------------------------------###
 
-# simulate Y for a given R^2 Y~X
-
-simY <- function(params, X){
-  
-  rey <- cor(X, X)
-  cors <- runif(params$pr * params$Ntotal, 0.3, 0.6)
-  a <- sqrt(params$R2y/(t(cors) %*% solve(rey) %*% cors))[1] # theoretical bounds for cor?
-  cors <- a*cors
-  # for given correlations simulate Y
-  Xsc <- scale(X)  
-  x <- 1:params$N
-  e <- residuals(lm(x ~ Xsc)) 
-  X.dual <- with(svd(Xsc), (params$N-1)*u %*% diag(ifelse(d > 0, 1/d, 0)) %*% t(v))
-  sigma2 <- c((1 - cors %*% cov(X.dual) %*% cors) / var(e))
-  y <- data.table::as.data.table(X.dual %*% cors + sqrt(sigma2)*e)
-  setnames(y, "Y")
-  return(y)
-}
-
-###--------------------------------------------------------------------------###
