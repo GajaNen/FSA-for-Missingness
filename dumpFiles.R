@@ -1,4 +1,5 @@
 
+
 # run it at once and save the results on the disk at then end
 
 fitAlgo <- function(func, name, params, folds, X, target){
@@ -99,5 +100,11 @@ fitAlgo <- function(func, name, params, folds, X, target){
   return(list(acc=acc, preds=preds, R2r=R2r))
   
 }
+
+
+#out[, names(out)[grep("(^Rel)|Y", names(out))] :=
+      #simCorMix(params = params, Nvar = Nrel, prfx = "Rel", addY=TRUE)]
+#out[, names(out)[grep("^Irrel", names(out))] :=
+      #simCorMix(params = params, Nvar = Nirrl, prfx = "Irrel")]
 
 ###--------------------------------------------------------------------------###
