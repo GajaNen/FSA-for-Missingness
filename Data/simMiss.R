@@ -19,7 +19,7 @@ simSpline <- function(x, deg=3, knots=1, coefSpl=NULL){
 simProbit <- function(params, dat){
 
   z <- qnorm(1-params$pm)
-  out <- data.table::data.table(LP=rep(NA, params$N))
+  out <- data.table::data.table(LP=numeric(params$N))
   is.mnar <- params$mechanism == "mnar"
   contNms <- c(names(dat)[grep("^RelCont", names(dat))], c("Y")[is.mnar])
   catNms <- names(dat)[grep("(^RelBin)|(^RelOrd)", names(dat))]
@@ -32,7 +32,7 @@ simProbit <- function(params, dat){
   
   # apply some transformations to any discrete X
   if (is.null(params$trans)){
-    transf <- lapply(1:length(catNms), function(x) identity)
+    transf <- lapply(seq_along(catNms), function(x) identity)
   } else transf <- unlist(params$trans)
   dat.rel[, (catNms) := mapply({function(f, x) f(x)}, transf, .SD, SIMPLIFY = FALSE), 
           .SDcols = catNms]
@@ -44,7 +44,7 @@ simProbit <- function(params, dat){
   
   # define residual variance for the linear predictor
   explSig <- t(coefsRel) %*% cov(dat.rel) %*% coefsRel
-  if (params$R2r %in% c(0,1)) stop('R**2 for indicator must not be 0 or 1.')
+  #if (params$R2r %in% c(0,1)) stop('R**2 for indicator must not be 0 or 1.')
   resSig <- (explSig / params$R2r) - explSig
   
   # define theoretical sd of lp
