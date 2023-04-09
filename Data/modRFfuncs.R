@@ -1,5 +1,8 @@
 ###--------------------------------------------------------------------------###
 
+# modified function from caret package for choosing subset size in RFE
+
+# set of function specifically for random forest
 rfFuncs$selectSize <- function (x, metric, maximize) 
 {
   index <- 1:nrow(x)
@@ -22,6 +25,7 @@ rfFuncs$selectSize <- function (x, metric, maximize)
 
 ###--------------------------------------------------------------------------###
 
+# set of function for any functions (in my case used for svm)
 caretFuncs$selectSize <- function (x, metric, maximize) 
 {
   index <- 1:nrow(x)
