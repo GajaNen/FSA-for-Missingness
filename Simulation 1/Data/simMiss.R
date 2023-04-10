@@ -1,10 +1,16 @@
 ###--------------------------------------------------------------------------###
 
-# generate a spline with 1 knot at the median for one variable
+# generate splines with 1 knot at the median for one variable
 
-simSpline <- function(x, deg=3, knots=1, coefSpl=NULL){
+#@x: numeric vector
+#@deg: degree of B-splines
+#@coesSpl: coefficients for basis functions, if null a random vector generated
+
+#return: splines values for this variable
+
+simSpline <- function(x, deg=3, coefSpl=NULL){
   
-  if (is.null(coefSpl)) coefSpl <- runif(deg + knots + 1, 0, 1)
+  if (is.null(coefSpl)) coefSpl <- runif(deg + 2, 0, 1)
   bas <- splines::bs(x = x, knots = median(x), degree = deg, intercept = TRUE)
   return(as.vector(bas %*% coefSpl))
 
@@ -15,6 +21,8 @@ simSpline <- function(x, deg=3, knots=1, coefSpl=NULL){
 # generate a binary outcome with probit gam (splines for cont and nonlinear
 # transformations of discrete variables) for a fixed R^2 in the latent variable
 # mar or mnar data
+
+#@dat: DT which must contain all relevant variables to be used as preds & Y if mnar
 
 simProbit <- function(params, dat){
 
@@ -50,11 +58,13 @@ simProbit <- function(params, dat){
   # define theoretical sd of lp
   sd.LP <- as.numeric(sqrt(explSig + resSig))
     
-  # discretise at z*theoretical SD above mean of linear predictor
+  # calculate linear predictor
   out[, LP := as.matrix(dat.rel) %*% (coefsRel) + 
         stats::rnorm(params$N, 0, sqrt(resSig))]
+  #discretise at z*theoretical SD above mean of linear predictor
   return(list(R=out[, as.numeric(LP > (mean(LP) + (z) * (sd.LP)))],
-              preds=allNms))
+              preds=allNms,
+              coefs=coefsRel))
   
 }
 
@@ -62,11 +72,17 @@ simProbit <- function(params, dat){
 
 # simulate missingness with a probit model or randomly
 
+#@dat: see above
+
+#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
+# true predictors (preds: char vector)
+
 simR <- function(params, dat){
   
   if (params$mechanism == "mcar"){
     return(list(R=rbinom(params$N, size = 1, prob = params$pm),
-                preds=NULL))
+                preds=NULL,
+                coefs=NULL))
   } else return(simProbit(params, dat))
   
 }
