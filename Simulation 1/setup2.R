@@ -1,6 +1,5 @@
 options(scipen=999)
-lapply(list("Data/simData.R", "Data/simMiss.R", "helpers.R", "depend.R"), source)
-source("Data/modRfFuncs.R")
+lapply(list.files("Simulation 1/Data", full.names = T), source)
 
 # fixed parameters
 fixedParams <- list(N=1000, 
@@ -37,6 +36,8 @@ fixedParams <- list(N=1000,
 )
 
 
+# THIS IS A PROVISIONAL WAY TO GENERATE COR MATRIX JUST FOR TESTING PURPOSES
+# GENERATE A POPULATION MATRI
 # population correlation matrices for Gaussian copula
 library(clusterGeneration)
 cm_lp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.05, covMethod = "eigen")$Sigma
