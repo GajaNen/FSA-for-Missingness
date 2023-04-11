@@ -3,7 +3,7 @@
 # @dir: output directory
 # @N: samples
 # @addY: simulate Y with a copula or not (specifically with X relevant)
-# @kInn: number of folds for algorithms which use two levels of resampling scheme
+# @kInn: number of inner level folds for algorithms which use two levels of resampling scheme
 # @kOut: number of folds for outer (or only) level of resampling
 # @sizes: sizes considered in RFE
 # @tuneGrids: tuning grids for all functions from caret package
@@ -13,7 +13,7 @@
 # @deg: degree of b-splines
 # @fcbcThres: thresholds for FCBC (fast correlation based filter)
 # @rankers: list of names:function (RFE, SA, glmnet, i.e. all from caret) or names of ranker FSA (others)
-# @subsest: same but for subsets
+# @subsest: name:NULL for methods which output subsets
 fixedParams <- list(dir="Results",
                     N=1000, 
                     addY=T,
