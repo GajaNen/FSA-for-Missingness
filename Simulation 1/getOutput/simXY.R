@@ -39,12 +39,10 @@ simOrd <- function(logisZ, lP, N){
 
 simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
   
-  # useful checks for debugging, but not once pop parameters are 
-  # correctly specified
-  # if (!identical(dim(params[[paste0("cormat",prfx)]][[1]])[1],length(params[[paste0("params",prfx)]][[1]]),
+  #useful checks when specifying population parameters (when OK no need to check it in each rep)
+  # if (!identical(dim(params[[paste0("corMat",prfx)]][[1]])[1],length(params[[paste0("params",prfx)]][[1]]),
   #     length(params[[paste0("dists",prfx)]][[1]]))) {
-  #   stop(pasteo("correlation matrix, marginal parameters and names of distributions don't
-  #               match in dimensions for ", prfx, "evant variables."))
+  #   stop(pasteo("Cormat, MargParam and DistNames don't match for ", prfx, " vars"))
   # }
   if (is.null(Nsim)&&is.null(nms)) {
     stop("Provide number or names of vars to be generated!")
@@ -85,10 +83,9 @@ simDat <- function(params){
   
   Nrel <- params$pr * params$Ntotal
   Nirrl <- params$Ntotal - Nrel 
-  if ((Nrel %% 3) || (Nirrl %% 3)) stop("Number of relevant and
-                                        irrelevant features each must
-                                        be a multiple of 3. Adjust Ntotal
-                                        or pr.") # always 1/3 Cont, Bin, Ord each!
+  if ((Nrel %% 3) || (Nirrl %% 3)) {
+    stop("Adjust Ntotal or pr so that Nrel and Nirrl are a multiple of 3.")
+  } # always 1/3 Cont, Bin, Ord each!
   out <- data.table::setDT(lapply(1:(params$Ntotal+1),
                                   function (x) rep(0, 1000)))
   # this is ugly but works

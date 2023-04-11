@@ -8,3 +8,5 @@ library(FSelectorRcpp)
 library(FSinR)
 library(sparseSVM)
 library(Biocomb)
+library(doParallel) # use any backend
+library(doRNG) 

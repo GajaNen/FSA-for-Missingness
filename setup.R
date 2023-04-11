@@ -1,9 +1,8 @@
-options(scipen=999)
-lapply(list("Data/simData.R", "Data/simMiss.R", "helpers.R", "depend.R"), source)
-source("Data/modRfFuncs.R")
-
 # fixed parameters
-fixedParams <- list(N=1000, 
+# FOR TESTING PURPOSES ONLY
+fixedParams <- list(dir="Results",
+                    N=1000, 
+                    addY=T,
                     kInn=3, 
                     kOut=5, 
                     sizes = c(0:6),
@@ -19,332 +18,138 @@ fixedParams <- list(N=1000,
                                      svmRadial=expand.grid(C=seq(1,10,1),
                                                            sigma=seq(0.1,1,0.2))),
                     Ntotal = 120,
-                    paramsY = list(paramsY=c(shape1=0.2,shape2=1),
-                                   type=c("beta")),
+                    map.funcs = list("normParam"=qnorm, "gamParam"=qgamma,"binParam"=qbinom,
+                                      "logParam"=qlogis, "paramY"=qbeta),
+                    R2y = 0.15,
                     deg = 3,
-                    fcbcThres = list(0.2, 0.3, 0.4),
+                    fcbcThres = list(0, 0.2, 0.3),
                     rankers = list("LR"="glm",  
                                    "ReliefF"=NULL,
-                                   "Boruta"=NULL),
+                                   "Boruta"=NULL,
+                                   "RF"=NULL),
                     subsets = list("lasso"="glmnet",
-                                   "EN"="glmnet",
-                                   "rbfSvmRFE"="svmRadial", 
+                                   "EN"="glmnet", 
                                    "rbfSvmSA"="svmRadial",
                                    "rfRFE"="ranger", 
                                    "l1SVM"=NULL,
                                    "hyb"=NULL)
-                    )
+)
 
+
+# THIS IS A PROVISIONAL WAY TO GENERATE COR MATRIX JUST FOR TESTING PURPOSES
+# TWO LEVELS: COMPLETELY INDEPEDENT RELEVANT VARIABLES WITH SOME DEPENDENCY WITH Y
+# AND SOME DEPENDECY BETWEEN RELEVANT VARIABLES AND WITH Y
+# THE SAID DEPENDENCY IS NON-PARAMETRIC (E.G. KENDALL'S CORRELATION)
+# WHICH FOR GAUSSIAN COPULA HAS A BIJECTIVE TRANSFORMATION TO PEARSON'S RHO
+# this associated rho matrix then 
+# USED IN GENERATING NORMALS FOR COPULA --- KENDALL'S CORRELATION PRESERVED 
+# WITH TRANSFORMATIONS TO OTHER DISTRIBUTIONS
+# IRRELEVANT VARIABLES ARE ALWAYS COMPLETELY INDEPEDENT
 
 # population correlation matrices for Gaussian copula
-cm_lp <- rethinking::rlkjcorr(1, fixedParams$Ntotal*0.05, 0.0001)
-diag(cm_lp) <- 1
-while(min(eigen(cm_lp, symmetric = TRUE)$values) < 0){
-  cm_lp <- rethinking::rlkjcorr(1, fixedParams$Ntotal*0.05, 0.0001)
-  diag(cm_lp) <- 1
-}
-cm_hp <- rethinking::rlkjcorr(1, fixedParams$Ntotal*0.2, 0.0001)
-diag(cm_hp) <- 1
-while(min(eigen(cm_hp, symmetric = TRUE)$values) < 0){
-  cm_hp <- rethinking::rlkjcorr(1, fixedParams$Ntotal*0.05, 0.0001)
-  diag(cm_hp) <- 1
-}
-#plot((cm_hp[lower.tri(cm_hp)][order(cm_hp[lower.tri(cm_hp)])]))
+library(clusterGeneration)
+cm_lp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.05, covMethod = "eigen")$Sigma
+cm_lp <- cov2cor(cm_lp)
+cors <- runif(fixedParams$Ntotal*0.05, 0.4, 0.6)
+a <- sqrt(fixedParams$R2y/(t(cors) %*% 
+                             solve(cm_lp) %*% 
+                             cors))[1] # theoretical bounds for cor?
+cors_lp <- a*cors
+cm_lp <- cbind(rbind(cm_lp, cors_lp), c(cors_lp,1))
+#cors_lp %*% solve(cm_lp) %*% cors_lp
+cm_hp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.2, covMethod = "eigen")$Sigma
+cm_hp <- cov2cor(cm_hp)
+cors <- runif(fixedParams$Ntotal*0.2, 0.4, 0.6)
+a <- sqrt(fixedParams$R2y/(t(cors) %*% 
+                                 solve(cm_hp) %*% 
+                                 cors))[1] # theoretical bounds for cor?
+cors_hp <- a*cors
+cm_hp <- cbind(rbind(cm_hp, cors_hp), c(cors_hp,1))
+#cors_hp %*% solve(cm_hp) %*% cors_hp
+
+Nt <- fixedParams$Ntotal
+
+cm_lp_diag <- cbind(rbind(diag(1,Nt*0.05), cors_lp), c(cors_lp,1))
+cm_hp_diag <- cbind(rbind(diag(1,Nt*0.2), cors_hp),c(cors_hp,1))
+
 
 # varied factors
+# PM: MISSINGNESS PERCENTAGE, PR: PERCENTAGE OF RELEVANT VARS
+# CORRPRED: WHETHER RELEVANT VARIABLES HAVE SOME DEPENDENCY OR NOT
 variedParams <- data.table::as.data.table(expand.grid(
   list(mechanism = c("mcar", "mar", "mnar"),
        pm = c(0.1, 0.5),
        corrPred = c(0, 1),
        pr = c(0.05, 0.2)))
-  )
+)
 
 
-# don't vary pr for mcar remove with datatable magic
-#variedParams[(mechanism=="mcar" & pr == 0.2) := NULL,]
+# ALL THESE PARAMETERS ARE JUST FOR TESTING PURPOSES
+# PR WON'T BE VARIED IN CASES WHEN MECHANISM IS MCAR TO REDUCE RUN TIME
+# SINCE INDICATOR IS GENERATED RANDOMLY ANYWAY
 
+variedParams <- variedParams[!(mechanism=="mcar" & pr == 0.2)]
+
+# TRANSFORMATIONS FOR DISCRETE VARS HIGH AND LOW PR VERSIONS
 HPtrans <- c(sin, exp, cos, sin, sin, sin, sin, sin,
              sin, exp, exp, exp, sin, exp, exp, exp)
 LPtrans <- c(sin, exp, cos, sin)
 
 variedParams[, trans := fifelse(pr==0.2, list(HPtrans), list(LPtrans))]
-# fix pseudo R^2 in missingness indicators per mechanism
+# fix pseudo R^2 in missingness indicators (maybe per mechanism)
 variedParams[mechanism!="mcar", R2r := 0.6]
-# fix R^2 in incomplete variable (maybe per mechanism)
-variedParams[, R2y := 0.3]
 
-# set some test parameters for normal, gamma, binomial distributions (relevant)
+# set some test parameters for normal, gamma, binomial, logistic distributions (relevant)
+# and population baseline probs for ordinal vars
 Nt <- fixedParams$Ntotal
 norms <- list(c(mean = 0,sd = 1))
-variedParams[, normParamRel := 
-               lapply(pr,function(n) rep(norms, (Nt)*n/6))]
-
 gams <- list(c(shape = 0.2, rate = 1))
-variedParams[, gamParamRel := 
-               lapply(pr,function(n) rep(gams, (Nt)*n/6))]
-
 binsp <- list(c(size=1, prob=0.3))
-variedParams[, binParamRel := 
-               lapply(pr,function(n) rep(binsp, (Nt)*n/3))]
-
 logsp <- list(c(location = 0, scale = 1))
-variedParams[, logParamRel := 
-               lapply(pr,function(n) rep(logsp, (Nt)*n/3))]
-
+paramy <- list(c(shape1=2,shape2=5))
 pops <- c(0.2, 0.1, 0.3, 0.2, 0.2)
+
+variedParams[, paramsRel := lapply(pr, function(n) c(rep(norms, (Nt)*n/6),
+                                                     rep(gams, (Nt)*n/6),
+                                                     rep(binsp, (Nt)*n/3),
+                                                     rep(logsp, (Nt)*n/3),
+                                                     paramy))]
+
 variedParams[, popProbsRel := 
-               lapply(pr,function(n) matrix(rep(pops, (Nt)*n/3),
-                                            nrow=(Nt)*n/3,
-                                            byrow=T))]
+               lapply(pr, function(n) lapply(1:((Nt)*n/3),
+                                             function(x) pops))]
 
-# set some toy parameter for normal, gamma, binomial distributions (irrelevant)
-variedParams[, normParamIrrel := 
-               lapply(pr,function(n) rep(norms, (Nt) * (1 - n) / 6))]
-
-variedParams[, gamParamIrrel := 
-               lapply(pr,function(n) rep(gams, (Nt) * (1 - n) / 6))]
-
-variedParams[, binParamIrrel := 
-               lapply(pr,function(n) rep(binsp, (Nt) * (1 - n) / 3))]
-
-variedParams[, logParamIrrel := 
-               lapply(pr,function(n) rep(logsp, (Nt) * (1 - n) / 3))]
-
+# set some params for normal, gamma, binomial distributions (irrelevant)
+variedParams[, paramsIrrel := lapply(pr, function(n) c(rep(norms, (Nt) * (1 - n) / 6),
+                                                      rep(gams, (Nt) * (1 - n) / 6),
+                                                      rep(binsp, (Nt) * (1 - n) / 3),
+                                                      rep(logsp, (Nt) * (1 - n) / 3)))]
 
 variedParams[, popProbsIrrel := 
-               lapply(pr,function(n) matrix(rep(pops, (Nt) * (1 - n) / 3),
-                                            nrow=(Nt) * (1 - n) / 3,
-                                            byrow=T))]
+               lapply(pr,function(n) lapply(1:((Nt) * (1 - n) / 3),
+                                            function(x) pops))]
+
+# set repetitions of each type of var
+variedParams[, repsRel := lapply(pr, function(x) c(Nt*x/6, Nt*x/6, Nt*x/3, Nt*x/3, 1))]
+variedParams[, repsIrrel := lapply(pr, function(x) c(Nt*(1-x)/6, Nt*(1-x)/6, Nt*(1-x)/3, Nt*(1-x)/3))]
+# set distributions to be used for mapping to appropriate quantile function
+variedParams[, distsRel := lapply(repsRel, 
+                                  function(x) unlist(mapply(rep, names(fixedParams$map.funcs), x,
+                                                            USE.NAMES = F)))]
+
+variedParams[, distsIrrel := lapply(repsIrrel, 
+                                  function(x) unlist(mapply(rep, names(fixedParams$map.funcs)[seq_along(x)], x,
+                                                            USE.NAMES = F)))]
 
 # define correlation matrix which differs between percentage of relevant variables
-# for the correlated predictors case
+# for the correlated predictors case and uncorrelated case
 
-variedParams[pr==0.05 & corrPred, cormat := list(cm_lp[lower.tri(cm_lp)])]
-variedParams[pr!=0.05 & corrPred, cormat := list(cm_hp[lower.tri(cm_hp)])]
+variedParams[pr==0.05 & corrPred, corMatRel := list(cm_lp)]
+variedParams[pr!=0.05 & corrPred, corMatRel := list(cm_hp)]
 
-#variedParams[, marginals := lapply((Nt))]
-variedParams$marginals <- lapply(fixedParams$Ntotal * variedParams$pr,
-                                 function(x) c(rep("norm", (x / 6)), 
-                                               rep("gamma", (x / 6)),
-                                               rep("binom", (x / 3)), 
-                                               rep("logis", (x / 3)))
-                                 )
+variedParams[pr==0.05 & corrPred==0, corMatRel := list(cm_lp_diag)]
+variedParams[pr!=0.05 & corrPred==0, corMatRel := list(cm_hp_diag)]
 
+variedParams[, corMatIrrel := lapply(pr, function(x) diag(1, Nt*(1-x)))]
+# coefs for splines
 variedParams[, theta := list(c(0.3, 0.5, 0.6, 0.1, 0.2))]
-
-params <- c(fixedParams, variedParams[24,])
-X <- simX(parms)
-nms <- names(X)[grepl("^Rel", names(X))]
-Y <- simY(parms, X[, ..nms])
-#Y <- simY(parms, X[,grepl("^rel", colnames(X))])
-summary(lm(V1~., data=cbind(X[, ..nms],Y)))
-R <- simR(parms, X, Y)
-target <- R$R
-mean(target) 
-parms$pm
-target <- factor(target, labels = c("c", "m"))
-require(performance)
-rels <- copy(X[, ..nms])
-rels[,c(9:24) := mapply({function(f, x) f(x)}, parms$trans, .SD, SIMPLIFY = FALSE),
-     .SDcols = names(X)[grepl("(^RelBin)|(^RelOrd)", names(X))]]
-rels[,c(1:8) := lapply(.SD, simSpline, deg = parms$deg),
-     .SDcols = names(X)[grepl("^RelCont", names(X))]]
-m <- glm(target~., data = as.data.frame(cbind(rels,Y,target)), family = binomial("probit"))
-r2_mckelvey(m)
-parms$R2r
-
-## check McKelvey's R^2 ##
-
-meansDT <- data.table::data.table(rep(NA, 1000),rep(NA, 1000),rep(NA, 1000),rep(NA, 1000))
-r2rsDT <- data.table::data.table(rep(NA, 1000),rep(NA, 1000),rep(NA, 1000),rep(NA, 1000))
-
-meansDT2 <- data.table::data.table(rep(NA, 200),rep(NA, 200),rep(NA, 200),rep(NA, 200))
-r2rsDT2 <- data.table::data.table(rep(NA, 200),rep(NA, 200),rep(NA, 200),rep(NA, 200))
-# rows 
-
-i1 <- c(fixedParams, variedParams[pr==0.05 & mechanism=="mar" & pm==0.1 & corrPred==1,])
-i2 <-  c(fixedParams, variedParams[pr==0.05 & mechanism=="mar" & pm==0.5 & corrPred==1,])
-i3 <-  c(fixedParams, variedParams[pr==0.05 & mechanism=="mnar" & pm==0.1 & corrPred==1,])
-i4 <-  c(fixedParams, variedParams[pr==0.05 & mechanism=="mnar" & pm==0.5 & corrPred==1,])
-
-countr <- 1
-
-test.conds <- expand.grid(list(pm=c(0.1, 0.5),
-                               mechanism=c("mar", "mnar")))
-for (i in 1:4){
-  mech <- test.conds[i,"mechanism"]
-  perc <- test.conds[i,"pm"]
-  parms <- c(fixedParams, variedParams[pr==0.05 & mechanism==(mech) 
-                                       & pm==(perc) & corrPred==1,])
-  
-  means <- rep(NA, 1000)
-  r2r <- rep(NA, 1000)
-  for (j in 1:1000){
-    X <- as.data.table(replicate(120, rnorm(1000)))
-    nms <- names(X)[grepl("^Rel", names(X))]
-    Y <- as.data.table(rnorm(1000))
-    R <- simR(parms, X, Y)
-    target <- R$R
-    means[j] <- mean(target) 
-    target <- factor(target, labels = c("c", "m"))
-    #require(performance)
-    is.mnar <- params$mechanism == "mnar"
-    Xt <- cbind(data.table::copy(X), Y[,..is.mnar]) 
-    contNms <- c(names(Xt)[grep("^RelCont", names(Xt))], names(Y)[is.mnar])
-    Xt[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
-           .SDcols = contNms]
-    catNms <- names(Xt)[grep("(^RelBin)|(^RelOrd)", names(Xt))]
-    Xt[, (catNms) := mapply({function(f, x) f(x)}, unlist(params$trans), .SD, SIMPLIFY = FALSE), 
-           .SDcols = catNms]
-    m <- glm(target~., data = cbind(as.data.frame(Xt),target), 
-             family = binomial("probit"))
-    r2r[j] <- performance::r2_mckelvey(m)
-    #parms$R2r
-    
-  }
-  
-  meansDT[, (paste0("V", countr)) := means]
-  r2rsDT[, (paste0("V", countr)) := r2r]
-  countr <- countr + 1
-}
-
-countr <- 1
-# try 1: mean(LP), no scaling and no coefs
-for (i in 1:4){
-  mech <- test.conds[i,"mechanism"]
-  perc <- test.conds[i,"pm"]
-  parms <- c(fixedParams, variedParams[pr==0.05 & mechanism==(mech) 
-                                       & pm==(perc) & corrPred==1,])
-  
-  means <- rep(NA, 200)
-  r2r <- rep(NA, 200)
-  for (j in 1:200){
-    X <- simX(parms)
-    nms <- names(X)[grepl("^Rel", names(X))]
-    Y <- simY(parms, X[, ..nms])
-    R <- simR(parms, X[, ..nms], Y)
-    target <- R$R
-    means[j] <- mean(target) 
-    target <- factor(target, labels = c("c", "m"))
-    #require(performance)
-    is.mnar <- parms$mechanism == "mnar"
-    Xt <- cbind(data.table::copy(X), copy(Y[,..is.mnar]) )
-    contNms <- names(Xt)[grep("^RelCont", names(Xt))]
-    Xt[, (contNms) := lapply(.SD, simSpline, deg = parms$deg, coefSpl = unlist(parms$theta)),
-       .SDcols = contNms]
-    catNms <- names(Xt)[grep("(^RelBin)|(^RelOrd)", names(Xt))]
-    Xt[, (catNms) := mapply({function(f, x) f(x)}, unlist(parms$trans), .SD, SIMPLIFY = FALSE), 
-       .SDcols = catNms]
-    m <- glm(target~., data = cbind(as.data.frame(Xt),target), 
-             family = binomial("probit"))
-    r2r[j] <- performance::r2_mckelvey(m)
-    #parms$R2r
-    
-  }
-  
-  meansDT2[, (paste0("V", countr)) := means]
-  r2rsDT2[, (paste0("V", countr)) := r2r]
-  countr <- countr + 1
-}
-meansDT2[, lapply(.SD, mean)]
-r2rsDT2[,lapply(.SD, mean)]
-
-saveRDS(meansDT[, lapply(.SD, mean)], "mean pm over 1000 repetitions")
-saveRDS(r2rsDT[,lapply(.SD, mean)], "mean R2r over 1000 repetitions")
-
-saveRDS(meansDT[, lapply(.SD, mean)], "mean pm over 1000 repetitions scaled preds")
-saveRDS(r2rsDT[,lapply(.SD, mean)], "mean R2r over 1000 repetitions scaled preds")
-
-hist(means)
-plot(density(means))
-mean(means)
-sd(means)
-hist(r2rs)
-plot(density(r2rs))
-mean(r2rs)
-
-params <- parms
-
-
-#logisZ <- relt[, (Nrel - Nrel / 3 + 1): Nrel, drop = F]
-#N <- params$N
-#nvar <- (Nrel / 3)
-
-
-a <- Sys.time()
-# check if it works
-for (i in 1:24){
-  params <- c(fixedParams, variedParams[i,])
-  X <- simX(params)
-  nms <- names(X)[grepl("^Rel", names(X))]
-  Y <- simY(params, X[,..nms])
-  R <- simR(params, X, Y)
-}
-b <- Sys.time()
-print(b-a)
-
-###############################################
-#################### check ####################
-###############################################
-
-#all <- c(fixedParams, variedParams)
-
-difs <- replicate(24, matrix(NA, nrow=24, ncol=24))
-meansBin1 <- matrix(NA, nrow=24, ncol=8)
-meansBin2 <- matrix(NA, nrow=24, ncol=38)
-ord1 <- replicate(24, matrix(NA, nrow=8, ncol=5))
-ord2 <- replicate(24, matrix(NA, nrow=38, ncol=5))
-
-for (i in 1:24){
-  
-  parms <- c(fixedParams, variedParams[i,])
-  X <- simX(parms)
-  nms <- names(X)[grepl("^Rel", names(X))]
-  Y <- simY(parms, X[, .SD, ,.SDcols = nms])
-  if (parms$corrPred){
-    m <- matrix(NA,nrow=parms$Ntotal*parms$pr,ncol=parms$Ntotal*parms$pr)
-    m[lower.tri(m)] <- unlist(parms$cormat)
-    diag(m) <- 1
-    m[upper.tri(m)] <- t(m)[upper.tri(m)]
-    if (parms$pr == 0.05){
-      difs[1:(parms$Ntotal*parms$pr),1:(parms$Ntotal*parms$pr),i] <- 
-        2/pi*asin(cm_lp) - cor(X[,1:(parms$Ntotal*parms$pr)], method = "kendall")
-    }
-    else {
-      difs[1:(parms$Ntotal*parms$pr),1:(parms$Ntotal*parms$pr),i] <- 
-        2/pi*asin(cm_hp) - cor(X[,1:(parms$Ntotal*parms$pr)], method = "kendall")
-      }
-  }
-  
-
-}
-
-# also check each aspect but with replication and average to see how it behaves in the limit
-# if it approach pop values
-
-difs[1:6,1:6,which(variedParams$corrPred == 1 & variedParams$pr == 0.05)]
-difs[1:24,1:24,which(variedParams$corrPred == 1 & variedParams$pr == 0.2)]
-
-
-
-Nrel <- parms$Ntotal * parms$pr
-Nrest <- parms$Ntotal - Nrel
-# check percentages of binary variables
-relBin <- X[,(Nrel / 3 + 1):(Nrel / 3 *2)]
-meansBin1[i,1:ncol(relBin)] <- (0.3 - apply(relBin, 2, mean))
-irrelBin <- X[,(Nrel+(Nrest / 3 + 1)):(Nrel+(Nrest / 3 * 2))]
-meansBin2[i,1:ncol(irrelBin)] <- (0.3 - apply(irrelBin, 2, mean))
-# check percentages of categorical variables 
-relOrd <- X[,(2*Nrel / 3 + 1):Nrel]
-ord1[1:ncol(relOrd),,i] <- 
-  parms$popProbsRel[[1]] - t(apply(relOrd, 2, function(x) table(x)/length(x)))
-irrelOrd <- X[,(Nrel+(2*Nrest / 3 + 1)):(Nrel+Nrest)]
-ord2[1:ncol(irrelOrd),,i] <- 
-  parms$popProbsIrrel[[1]] - t(apply(irrelOrd, 2, function(x) table(x)/length(x)))
-meansBin1
-meansBin2
-ord1 # 8th repetition, 2nd variable is suspicious? two times two biases opposite
-# same 14th repetition, 2nd variable
-ord2
-
-#length(params$cormat) == (24*23)/2

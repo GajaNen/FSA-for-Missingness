@@ -2,7 +2,7 @@
 
 # fit all algorithms at once
 
-#@dat: must not contain incomplete variable Y, must cotain all variables (rel&irrel)
+#@dat: must not contain incomplete variable Y, must contain all variables (rel&irrel)
 # and missingness indicator named target
 
 #return feature rankings (DT), feature subsets by algo (list) and accuracies (list)
@@ -89,13 +89,20 @@ fitAlgo <- function(params, dat){
   ranks[, Boruta := (Boruta::Boruta(target~., data = dat))$finalDecision]
   ranks[, ReliefF := FSelectorRcpp::relief(target~., data=dat, 
                                            sampleSize = 10)[,2]]
+  res <- ranger::ranger(target~., data=dat, importance = "impurity",splitrule = "gini",
+                        oob.error = T)
+  acc[["RF"]] <- 1 - res$prediction.error
+  ranks[, RF := res$variable.importance]
+  binv <- grep(".*Bin",names(dat))
+  dat[, (binv) :=
+        lapply(.SD, function(x) factor(x, labels = c("zer","one"))),
+      .SDcols = binv]
   substs <- c(substs, setNames(lapply(params$fcbcThres, #fast correlation-based filter
                                       function(x) Biocomb::select.fast.filter(
                                         dat,#last col must be the target
                                         disc.method = "MDL",
                                         threshold = x,
-                                        attrs.nominal = grep(".*Bin", 
-                                                             names(dat)))),
+                                        attrs.nominal = binv)),
                                 paste0("FCBC_", params$fcbcThres))) # apply different thresholds
   return(list(rankers=ranks, subsets=substs))
 }
@@ -113,71 +120,38 @@ fitAlgo <- function(params, dat){
 simRep <- function(fixed, varied, rpt="test", nfac=4){
   
   prev <- rep("none", nfac)
+  warns <- errs <- list()
   for (i in nrow(varied)){
     conds <- c(fixed, varied[i,])
     changes <- varied[i, 1:nfac] != prev 
     names(changes) <- colnames(varied)[1:nfac]
-    if (changes["pr"] || changes["corrPred"]) dat <- simDat(conds)
-    mssng <- simR(conds, dat)
-    dat[, target := factor(mssng$R, labels = c("c", "m"))]
+    if (changes["pr"] || changes["corrPred"]) XY <- simDat(conds)
+    mssng <- simR(conds, XY)
+    XY[, target := factor(mssng$R, labels = c("c","m"))]
+    res <- tryCatch(withCallingHandlers(
+      expr = fitAlgo(conds, XY[,!"Y"]), 
+      warning = function(w) {
+        warns <<- c(warns, list(w))
+        invokeRestart("muffleWarning")
+      }), 
+      error = function(e) {
+        errs <<- c(errs, list(e))
+      }
+    )
+    if (!dir.exists(conds$dir)) dir.create(conds$dir)
     saveRDS(list(tp=mssng$preds,
                  coef=mssng$coefs,
-                 algoRes=fitAlgo(params = conds, 
-                                 dat = dat[,!"Y"])), 
-            paste0("mech_", params$mechanism,
-                   "_pm_", params$pm,
-                   "_corrPred_", params$corrPred,
-                   "_pr_", params$pr,
-                   "_rep_", rpt))
-    cat(paste0("Condition ", i, "out of ", nrow(varied), 
-                "in repetition ", rpt, "finished!"))
+                 res=res),
+            file.path(conds$dir,
+            paste0("mech_", conds$mechanism,
+                   "_pm_", conds$pm,
+                   "_corrPred_", conds$corrPred,
+                   "_pr_", conds$pr,
+                   "_rep_", rpt,
+                   ".RDS")))
+    # cat(paste0("Condition ", i, "out of ", nrow(varied),
+    #             "in repetition ", rpt, "finished!"))
   }
 }
 
 ###--------------------------------------------------------------------------###
-
-library(doParallel)
-library(doRNG)
-ncores <- detectCores()
-cl <- makeCluster(6)
-registerDoParallel(cl)
-
-options(error = dump.frames)
-a <- Sys.time()
-set.seed(1813544)
-
-# make message printed
-x2 <- foreach(nmc=1:10, .packages=c("stats",
-                                    "mvnfast",
-                                    "data.table",
-                                    "splines",
-                                    "caret",
-                                    "ranger",
-                                    "kernlab",
-                                    "Boruta",
-                                    "FSelectorRcpp",
-                                    "FSinR",
-                                    "sparseSVM",
-                                    "Biocomb")) %dorng% {
-                                      simRep(fixedParams, variedParams,nmc)
-                                      }
-b <- Sys.time()
-print(b-a)
-
-stopCluster(cl)
-registerDoSEQ()
-
-# results are fully reproducible and seeds are the same
-
-lapply(1:10, function(x) attr(x2, 'rng')[[n]] == attr(x, 'rng')[[n]])
-
-readRDS("mech_mcar_pm_0.1_corrPred_0_pr_0.05_rep_1")[[1]] ==
-  readRDS("mech_mcar_pm_0.1_corrPred_0_pr_0.05_rep_1try2")[[1]]
-
-lapply(1:5, function(n) 
-readRDS("mech_mcar_pm_0.1_corrPred_0_pr_0.05_rep_1")[[3]][[n]] ==
-    readRDS("mech_mcar_pm_0.1_corrPred_0_pr_0.05_rep_1try2")[[3]][[n]])
-
-lapply(1:9, function(n) 
-  readRDS("mech_mcar_pm_0.1_corrPred_0_pr_0.05_rep_1")[[2]][[i]] ==
-    readRDS("mech_mcar_pm_0.1_corrPred_0_pr_0.05_rep_1try2")[[2]][[i]])
