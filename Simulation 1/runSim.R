@@ -3,8 +3,8 @@
 if (!grepl("(.*Thesis-main)|(.*Thesis)", getwd())){
   stop("change WD to Thesis dir!")
 }
-lapply(c(file.path("Simulation 1", "setup.R"), 
-         list.files(file.path("Simulation 1", "getOutput"),full.names = T)), 
+lapply(c(list.files(file.path("Simulation 1", "getOutput"),full.names = T),
+         file.path("Simulation 1", "setup.R")), 
        source)
 
 

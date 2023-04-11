@@ -1,5 +1,19 @@
 # fixed parameters
 # FOR TESTING PURPOSES ONLY
+# @dir: output directory
+# @N: samples
+# @addY: simulate Y with a copula or not (specifically with X relevant)
+# @kInn: number of folds for algorithms which use two levels of resampling scheme
+# @kOut: number of folds for outer (or only) level of resampling
+# @sizes: sizes considered in RFE
+# @tuneGrids: tuning grids for all functions from caret package
+# @Ntotal: N of all variables
+# @map.funcs: mapping from name of parameters to function to be applied
+# @R2y: used to generate some depedency between Xrel and Y (as a population matrix)
+# @deg: degree of b-splines
+# @fcbcThres: thresholds for FCBC (fast correlation based filter)
+# @rankers: list of names:function (RFE, SA, glmnet, i.e. all from caret) or names of ranker FSA (others)
+# @subsest: same but for subsets
 fixedParams <- list(dir="Results",
                     N=1000, 
                     addY=T,
@@ -37,6 +51,7 @@ fixedParams <- list(dir="Results",
 
 
 # THIS IS A PROVISIONAL WAY TO GENERATE COR MATRIX JUST FOR TESTING PURPOSES
+# always generate X relevant and Y together, irrelevant separately
 # TWO LEVELS: COMPLETELY INDEPEDENT RELEVANT VARIABLES WITH SOME DEPENDENCY WITH Y
 # AND SOME DEPENDECY BETWEEN RELEVANT VARIABLES AND WITH Y
 # THE SAID DEPENDENCY IS NON-PARAMETRIC (E.G. KENDALL'S CORRELATION)
@@ -45,21 +60,28 @@ fixedParams <- list(dir="Results",
 # USED IN GENERATING NORMALS FOR COPULA --- KENDALL'S CORRELATION PRESERVED 
 # WITH TRANSFORMATIONS TO OTHER DISTRIBUTIONS
 # IRRELEVANT VARIABLES ARE ALWAYS COMPLETELY INDEPEDENT
+# so basically it's the picture in the thesis draft, with X->Y, Y->Xrel & no Z &
+# additional set of indepedent (between & with Xrel and Y) irrelevant variables
 
-# population correlation matrices for Gaussian copula
-library(clusterGeneration)
+# population correlation matrices for Gaussian copula 
+
+#cor mat low percentage relevant variables (Xrel and Y)
 cm_lp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.05, covMethod = "eigen")$Sigma
 cm_lp <- cov2cor(cm_lp)
 cors <- runif(fixedParams$Ntotal*0.05, 0.4, 0.6)
+# some depedency with Y
 a <- sqrt(fixedParams$R2y/(t(cors) %*% 
                              solve(cm_lp) %*% 
                              cors))[1] # theoretical bounds for cor?
 cors_lp <- a*cors
 cm_lp <- cbind(rbind(cm_lp, cors_lp), c(cors_lp,1))
 #cors_lp %*% solve(cm_lp) %*% cors_lp
+
+#cor mat high percentage relevant variables (Xrel and Y)
 cm_hp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.2, covMethod = "eigen")$Sigma
 cm_hp <- cov2cor(cm_hp)
 cors <- runif(fixedParams$Ntotal*0.2, 0.4, 0.6)
+#some depedency between Xrel and Y
 a <- sqrt(fixedParams$R2y/(t(cors) %*% 
                                  solve(cm_hp) %*% 
                                  cors))[1] # theoretical bounds for cor?
@@ -69,8 +91,27 @@ cm_hp <- cbind(rbind(cm_hp, cors_hp), c(cors_hp,1))
 
 Nt <- fixedParams$Ntotal
 
-cm_lp_diag <- cbind(rbind(diag(1,Nt*0.05), cors_lp), c(cors_lp,1))
-cm_hp_diag <- cbind(rbind(diag(1,Nt*0.2), cors_hp),c(cors_hp,1))
+# matrices (high and low percentage of rel vars) for corrPred==0
+# with the same dependency with Y (linear, which is not preserved with a copula, but just
+# to create some form of depenndce structure)
+
+lp_diag <- diag(1,Nt*0.05)
+cors <- runif(fixedParams$Ntotal*0.05, 0.4, 0.6)
+a <- sqrt(fixedParams$R2y/(t(cors) %*% 
+                             solve(lp_diag) %*% 
+                             cors))[1] # theoretical bounds for cor?
+cors_lp_diag <- a*cors
+
+hp_diag <- diag(1,Nt*0.2)
+
+cors <- runif(fixedParams$Ntotal*0.2, 0.4, 0.6)
+a <- sqrt(fixedParams$R2y/(t(cors) %*% 
+                             solve(hp_diag) %*% 
+                             cors))[1] # theoretical bounds for cor?
+cors_hp_diag <- a*cors
+
+cm_lp_diag <- cbind(rbind(lp_diag, cors_lp_diag), c(cors_lp_diag,1))
+cm_hp_diag <- cbind(rbind(hp_diag, cors_hp_diag),c(cors_hp_diag,1))
 
 
 # varied factors
@@ -150,6 +191,9 @@ variedParams[pr!=0.05 & corrPred, corMatRel := list(cm_hp)]
 variedParams[pr==0.05 & corrPred==0, corMatRel := list(cm_lp_diag)]
 variedParams[pr!=0.05 & corrPred==0, corMatRel := list(cm_hp_diag)]
 
+# for irrel variables, generate diagonal matrices
 variedParams[, corMatIrrel := lapply(pr, function(x) diag(1, Nt*(1-x)))]
+
+
 # coefs for splines
 variedParams[, theta := list(c(0.3, 0.5, 0.6, 0.1, 0.2))]
