@@ -47,9 +47,6 @@ fixedParams <- list(dir="Results",
                                    "hyb"=NULL)
 )
 
-
-# THIS IS A PROVISIONAL WAY TO GENERATE COR MATRIX JUST FOR TESTING PURPOSES
-
 # always generate X relevant and Y together, irrelevant separately
 # TWO LEVELS: COMPLETELY INDEPEDENT RELEVANT VARIABLES WITH SOME DEPENDENCY WITH Y
 # AND SOME DEPENDECY BETWEEN RELEVANT VARIABLES AND WITH Y
@@ -66,44 +63,37 @@ fixedParams <- list(dir="Results",
 
 # population correlation matrices for Gaussian copula 
 
-#cor mat low percentage relevant variables (Xrel and Y)
-R2y <- 0.15 # used just for now, to make sure there's some dependency between Xrel & Y
-# (not preserved with a copula anyway
-cm_lp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.05, covMethod = "eigen")$Sigma
-cm_lp <- cov2cor(cm_lp)
-cors <- runif(fixedParams$Ntotal*0.05, 0.4, 0.6)
-# some depedency with Y
-a <- sqrt(R2y/(t(cors) %*% solve(cm_lp) %*% cors))[1] 
-cors_lp <- a*cors
-cm_lp <- cbind(rbind(cm_lp, cors_lp), c(cors_lp,1))
-#cors_lp %*% solve(cm_lp) %*% cors_lp
+# THIS IS A PROVISIONAL WAY TO GENERATE COR MATRIX JUST FOR TESTING PURPOSES
+# in the actual population matrix used for the simulation, there will be dependency
+# Between Xrel and Xrel-Y or only Xrel-Y
 
-#cor mat high percentage relevant variables (Xrel and Y)
-cm_hp <- genPositiveDefMat(dim=fixedParams$Ntotal*0.2, covMethod = "eigen")$Sigma
-cm_hp <- cov2cor(cm_hp)
-cors <- runif(fixedParams$Ntotal*0.2, 0.4, 0.6)
-#some depedency between Xrel and Y
-a <- sqrt(R2y/(t(cors) %*% solve(cm_hp) %*% cors))[1] # theoretical bounds for cor?
-cors_hp <- a*cors
-cm_hp <- cbind(rbind(cm_hp, cors_hp), c(cors_hp,1))
-#cors_hp %*% solve(cm_hp) %*% cors_hp
+
+#cor mat low percentage relevant variables and Y when corrPred==1
+n <- fixedParams$addY==T
+cm_lp <- cov2cor(genPositiveDefMat(dim=fixedParams$Ntotal*0.05+n, covMethod = "eigen")$Sigma)
+#cor mat high percentage relevant variables (Xrel and Y) when corrPred==1
+cm_hp <- cov2cor(genPositiveDefMat(dim=fixedParams$Ntotal*0.2+n, covMethod = "eigen")$Sigma)
+
 
 Nt <- fixedParams$Ntotal
 
+# THIS IS A PROVISIONAL WAY TO GENERATE CORS XREL-Y JUST
+# TO MAKE SURE THERE'S SOME DEPENDENCY
+R2y <- 0.15
+
 # matrices (high and low percentage of rel vars) for corrPred==0
-# with the same dependency with Y (linear, which is not preserved with a copula, but just
-# to create some form of depenndce structure)
 
 lp_diag <- diag(1,Nt*0.05)
-cors <- runif(fixedParams$Ntotal*0.05, 0.4, 0.6)
+cors <- runif(Nt*0.05, 0.4, 0.6)
 a <- sqrt(R2y/(t(cors) %*% solve(lp_diag) %*% cors))[1] 
 cors_lp_diag <- a*cors
+# cors_lp_diag %*% solve(lp_diag) %*% cors_lp_diag
 
 hp_diag <- diag(1,Nt*0.2)
-
-cors <- runif(fixedParams$Ntotal*0.2, 0.4, 0.6)
+cors <- runif(Nt*0.2, 0.4, 0.6)
 a <- sqrt(R2y/(t(cors) %*% solve(hp_diag) %*% cors))[1] 
 cors_hp_diag <- a*cors
+#cors_hp_diag %*% solve(hp_diag) %*% cors_hp_diag
 
 cm_lp_diag <- cbind(rbind(lp_diag, cors_lp_diag), c(cors_lp_diag,1))
 cm_hp_diag <- cbind(rbind(hp_diag, cors_hp_diag),c(cors_hp_diag,1))
