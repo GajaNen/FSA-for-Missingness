@@ -24,6 +24,9 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
 
 #@dat: DT which must contain all relevant variables to be used as preds & Y if mnar
 
+#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
+#true predictors (preds: char vector)
+
 simProbit <- function(params, dat){
 
   z <- qnorm(1-params$pm)

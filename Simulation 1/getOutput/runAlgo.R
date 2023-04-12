@@ -5,7 +5,8 @@
 #@dat: must not contain incomplete variable Y, must contain all variables (rel&irrel)
 # and missingness indicator named target
 
-#return feature rankings (DT), feature subsets by algo (list) and accuracies (list)
+#return a list of
+#feature rankings (DT), feature subsets by algo (list) and accuracies (list)
 fitAlgo <- function(params, dat){
   
   ranks <- data.table::setDT(lapply(seq_along(params$rankers), rep, NA, params$Ntotal))
@@ -15,42 +16,19 @@ fitAlgo <- function(params, dat){
   acc <- list()
   all <- c(params$rankers, params$subsets) # parameters for each FSA
   folds <- caret::createFolds(dat[,target], k = params$kOut, returnTrain = T)
-  # regressions
-  for (name in intersect(names(all), c("lasso", "EN", "LR"))){
-    
-    trControl <- caret::trainControl(method = "cv", number = params$kOut, 
-                                     classProbs = T, index = folds,
-                                     selectionFunction = "oneSE")
-    model <- caret::train(target~., data = dat, family = "binomial",
-                          method = all[[name]], trControl = trControl, 
-                          tuneGrid = params$tuneGrids[[name]], 
-                          metric = "Accuracy")
-    if (name == "LR") {
-      ranks[, (name) := coef(summary(model))[-1,"Pr(>|z|)"]]
-    } else substs[[name]] <- 
-      names(which(coef(model$finalModel, model$bestTune$lambda)[-1,] != 0))
-    acc[[name]] <- model$results[rownames(model$bestTune), "Accuracy"]
-  }
-  #recursive feature elimination
+  # lasso SVM
+  ids <- data.table::setDT(list(CVids=rep(0, params$N))) # get holdout indices instead of train
+  for (x in 1:params$kOut) ids[setdiff(1:params$N, folds[[x]]), CVids := x] 
+  res <- sparseSVM::cv.sparseSVM(X=as.matrix(dat[,!"target"]), 
+                                 y=dat[,target], alpha = 1, gamma = 0.1, nlambda=100,
+                                 lambda.min = 0.01, screen = "ASR", max.iter = 1000, eps = 1e-5,
+                                 fold.id = ids, nfolds = params$kOut)
+  lambda_res <- lambdaSE(res) # one SE rule (largest lambda with 1sdME within smallest)
+  substs[["l1SVM"]] <- 
+    names(res$fit$weights[-1,lambda_res$bestIndex])[res$fit$weights[-1,lambda_res$bestIndex] != 0]
+  acc[["l1SVM"]] <- 1 - lambda_res$bestME
   trControl <- caret::trainControl(method = "cv", number = params$kInn,
                                    selectionFunction = "oneSE")
-  
-  for (name in intersect(names(all), c("rfRFE", "linSvmRFE", "rbfSvmRFE"))){
-    # specify controls, appropriate set of functions and method for the given name
-    ctrlRFE <- caret::rfeControl(functions = unlist(ifelse(grepl("^rf", name),
-                                                    list(rfFuncs), 
-                                                    list(caretFuncs))), 
-                                 method = "cv", number = params$kOut, 
-                                 index = folds)
-    resRFE <- caret::rfe(target~., data = dat,
-                         sizes = params$sizes,
-                         rfeControl = ctrlRFE,
-                         trControl = trControl,
-                         tuneGrid = params$tuneGrids[[all[[name]]]],
-                         method = all[[name]])
-    substs[[name]] <- caret::predictors(resRFE)
-    acc[[name]] <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
-  }
   #simulated annealing
   for (name in intersect(names(all), (c("rfSA", "linSvmSA", "rbfSvmSA")))){
     # specify controls, appropriate set of functions and method for the given name
@@ -68,42 +46,61 @@ fitAlgo <- function(params, dat){
                          differences = F)
     substs[[name]] <- resSA$optVariables
     acc[[name]] <- resSA$averages[resSA$optIter, "Accuracy"]
-  } 
+  }
+  binv <- grep(".*Bin",names(dat)) # if using SVM-RFE move RFE chunk before conversion to factors
+  dat[, (binv) := lapply(.SD, factor, labels = c("z","o")), .SDcols = binv]
+  #recursive feature elimination
+  for (name in intersect(names(all), c("rfRFE", "linSvmRFE", "rbfSvmRFE"))){
+    # specify controls, appropriate set of functions and method for the given name
+    ctrlRFE <- caret::rfeControl(functions = unlist(ifelse(grepl("^rf", name),
+                                                           list(rfFuncs), 
+                                                           list(caretFuncs))), 
+                                 method = "cv", number = params$kOut, 
+                                 index = folds)
+    resRFE <- caret::rfe(target~., data = dat,
+                         sizes = params$sizes,
+                         rfeControl = ctrlRFE,
+                         trControl = trControl,
+                         tuneGrid = params$tuneGrids[[all[[name]]]],
+                         method = all[[name]])
+    substs[[name]] <- caret::predictors(resRFE)
+    acc[[name]] <- resRFE$results[resRFE$results$Variables==resRFE$bestSubset,"Accuracy"]
+  }
+  # regressions
+  for (name in intersect(names(all), c("lasso", "EN", "LR"))){
+    
+    trControl <- caret::trainControl(method = "cv", number = params$kOut, 
+                                     classProbs = T, index = folds,
+                                     selectionFunction = "oneSE")
+    model <- caret::train(target~., data = dat, family = "binomial",
+                          method = all[[name]], trControl = trControl, 
+                          tuneGrid = params$tuneGrids[[name]], 
+                          metric = "Accuracy")
+    if (name == "LR") {
+      ranks[, (name) := coef(summary(model))[-1,"Pr(>|z|)"]]
+    } else substs[[name]] <- 
+      names(which(coef(model$finalModel, model$bestTune$lambda)[-1,] != 0))
+    acc[[name]] <- model$results[rownames(model$bestTune), "Accuracy"]
+  }
   #hybrid: gini (filter) + whale opt (wrapper)
   filt_eval <- FSinR::filterEvaluator('giniIndex')
   hyb_search <- FSinR::whaleOptimization(10, 50)
   res <- hyb_search(dat, "target", featureSetEval = filt_eval)
   substs[["hyb"]] <- dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]
-  # lasso SVM
-  ids <- data.table::setDT(list(CVids=rep(0, params$N))) # get holdout indices instead of train
-  for (x in 1:params$kOut) ids[setdiff(1:params$N, folds[[x]]), CVids := x] 
-  res <- sparseSVM::cv.sparseSVM(X=as.matrix(dat[,!"target"]), 
-                                 y=dat[,target], alpha = 1, gamma = 0.1, nlambda=100,
-                                 lambda.min = 0.01, screen = "ASR", max.iter = 1000, eps = 1e-5,
-                                 fold.id = ids, nfolds = params$kOut)
-  lambda_res <- lambdaSE(res) # one SE rule (largest lambda with 1sdME within smallest)
-  substs[["l1SVM"]] <- 
-    names(res$fit$weights[-1,lambda_res$bestIndex])[res$fit$weights[-1,lambda_res$bestIndex] != 0]
-  acc[["l1SVM"]] <- 1 - lambda_res$bestME
   # Boruta & ReliefF
   ranks[, Boruta := (Boruta::Boruta(target~., data = dat))$finalDecision]
-  ranks[, ReliefF := FSelectorRcpp::relief(target~., data=dat, 
-                                           sampleSize = 10)[,2]]
   res <- ranger::ranger(target~., data=dat, importance = "impurity",splitrule = "gini",
                         oob.error = T)
   acc[["RF"]] <- 1 - res$prediction.error
   ranks[, RF := res$variable.importance]
-  binv <- grep(".*Bin",names(dat))
-  dat[, (binv) :=
-        lapply(.SD, function(x) factor(x, labels = c("zer","one"))),
-      .SDcols = binv]
+  ranks[, ReliefF := FSelector::relief(target~., data=dat,sample.size = 10)[,1]]
   substs <- c(substs, setNames(lapply(params$fcbcThres, #fast correlation-based filter
                                       function(x) Biocomb::select.fast.filter(
                                         dat,#last col must be the target
                                         disc.method = "MDL",
                                         threshold = x,
                                         attrs.nominal = binv)),
-                                paste0("FCBC_", params$fcbcThres))) # apply different thresholds
+                               paste0("FCBC_", params$fcbcThres))) # apply different thresholds
   return(list(rankers=ranks, subsets=substs))
 }
 

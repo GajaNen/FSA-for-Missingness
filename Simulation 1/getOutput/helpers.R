@@ -1,6 +1,7 @@
 ###--------------------------------------------------------------------------###
 
 # modified function from caret package for choosing subset size in RFE
+# specifically to implement one SE rule for tuning subset size
 
 # set of function specifically for random forest
 rfFuncs$selectSize <- function (x, metric, maximize) 

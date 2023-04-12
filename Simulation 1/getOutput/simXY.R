@@ -37,6 +37,8 @@ simOrd <- function(logisZ, lP, N){
 # if existing DT is passed, they either refer to existing columns or new cols are 
 # created, if not they are the automatically created names (V,1:Nsim)
 
+#return DT
+
 simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
   
   #useful checks when specifying population parameters (when OK no need to check it in each rep)
@@ -77,7 +79,8 @@ simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
 
 ###--------------------------------------------------------------------------###
 
-# simulate correlated or independent relevant and irrelevant predictors
+# simulate correlated or independent relevant and irrelevant predictors (and Y if addY)
+# return DT of all variables (Xrel, Xirrel & Y if addY)
 
 simDat <- function(params){
   
