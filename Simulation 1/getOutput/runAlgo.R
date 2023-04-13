@@ -117,11 +117,12 @@ fitAlgo <- function(params, dat){
 simRep <- function(fixed, varied, rpt="test", nfac=4){
   
   prev <- rep("none", nfac)
-  warns <- errs <- list()
   for (i in nrow(varied)){
+    warns <- errs <- list()
     conds <- c(fixed, varied[i,])
     changes <- varied[i, 1:nfac] != prev 
     names(changes) <- colnames(varied)[1:nfac]
+    s <- .Random.seed
     if (changes["pr"] || changes["corrPred"]) XY <- simDat(conds)
     mssng <- simR(conds, XY)
     XY[, target := factor(mssng$R, labels = c("c","m"))]
@@ -138,14 +139,16 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
     if (!dir.exists(conds$dir)) dir.create(conds$dir)
     saveRDS(list(tp=mssng$preds,
                  coef=mssng$coefs,
-                 res=res),
-            file.path(conds$dir,
-            paste0("mech_", conds$mechanism,
-                   "_pm_", conds$pm,
-                   "_corrPred_", conds$corrPred,
-                   "_pr_", conds$pr,
-                   "_rep_", rpt,
-                   ".RDS")))
+                 res=res,
+                 RNGstate=s,
+                 changes=changes),
+            file.path(conds$dir,paste0("mech_", conds$mechanism,
+                                       "_pm_", conds$pm,
+                                       "_corrPred_", conds$corrPred,
+                                       "_pr_", conds$pr,
+                                       "_rep_", rpt,
+                                       ".RDS")))
+    prev <- varied[i, 1:nfac]
     # cat(paste0("Condition ", i, "out of ", nrow(varied),
     #             "in repetition ", rpt, "finished!"))
   }

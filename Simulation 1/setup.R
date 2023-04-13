@@ -1,3 +1,6 @@
+
+# each condition: a row of variedParams + all fixedParams
+
 # fixed parameters
 # FOR TESTING PURPOSES ONLY
 # @dir: char, output directory for saving results
@@ -32,7 +35,7 @@ fixedParams <- list(dir="Results",
                                                            sigma=seq(0.1,1,0.2))),
                     Ntotal = 120,
                     map.funcs = list("normParam"=qnorm, "gamParam"=qgamma,"binParam"=qbinom,
-                                      "logParam"=qlogis, "paramY"=qbeta),
+                                     "logParam"=qlogis, "paramY"=qbeta),
                     deg = 3,
                     fcbcThres = list(0, 0.2, 0.3),
                     rankers = list("LR"="glm",  
@@ -102,7 +105,7 @@ cm_hp_diag <- cbind(rbind(hp_diag, cors_hp_diag),c(cors_hp_diag,1))
 # varied factors
 # PM: MISSINGNESS PERCENTAGE, PR: PERCENTAGE OF RELEVANT VARS
 # CORRPRED: WHETHER RELEVANT VARIABLES HAVE SOME DEPENDENCY OR NOT
-variedParams <- data.table::as.data.table(expand.grid(
+variedParams <- data.table::setDT(expand.grid(
   list(mechanism = c("mcar", "mar", "mnar"),
        pm = c(0.1, 0.5),
        corrPred = c(0, 1),
@@ -113,6 +116,9 @@ variedParams <- data.table::as.data.table(expand.grid(
 # ALL THESE PARAMETERS ARE JUST FOR TESTING PURPOSES
 # PR WON'T BE VARIED IN CASES WHEN MECHANISM IS MCAR TO REDUCE RUN TIME
 # SINCE INDICATOR IS GENERATED RANDOMLY ANYWAY
+# another way to reduce number of conditions is to use only Y as a predictor in mnar
+# this way at least PR doesn't have to be varied (and maybe even corrPred), which means
+# at least 4 conditions less 
 
 variedParams <- variedParams[!(mechanism=="mcar" & pr == 0.2)]
 
@@ -125,8 +131,9 @@ variedParams[, trans := fifelse(pr==0.2, list(HPtrans), list(LPtrans))]
 # fix pseudo R^2 in missingness indicators (maybe per mechanism)
 variedParams[mechanism!="mcar", R2r := 0.6]
 
+# always 1/3 Cont, Bin, Ord in this order (but within each type, distributions can var)
 # set some test parameters for normal, gamma, binomial, logistic distributions (relevant)
-# and population baseline probs for ordinal vars
+# and population baseline probs for ordinal vars + Y
 Nt <- fixedParams$Ntotal
 norms <- list(c(mean = 0,sd = 1))
 gams <- list(c(shape = 0.2, rate = 1))
@@ -147,9 +154,9 @@ variedParams[, popProbsRel :=
 
 # set some params for normal, gamma, binomial distributions (irrelevant)
 variedParams[, paramsIrrel := lapply(pr, function(n) c(rep(norms, (Nt) * (1 - n) / 6),
-                                                      rep(gams, (Nt) * (1 - n) / 6),
-                                                      rep(binsp, (Nt) * (1 - n) / 3),
-                                                      rep(logsp, (Nt) * (1 - n) / 3)))]
+                                                       rep(gams, (Nt) * (1 - n) / 6),
+                                                       rep(binsp, (Nt) * (1 - n) / 3),
+                                                       rep(logsp, (Nt) * (1 - n) / 3)))]
 
 variedParams[, popProbsIrrel := 
                lapply(pr,function(n) lapply(1:((Nt) * (1 - n) / 3),
@@ -164,8 +171,8 @@ variedParams[, distsRel := lapply(repsRel,
                                                             USE.NAMES = F)))]
 
 variedParams[, distsIrrel := lapply(repsIrrel, 
-                                  function(x) unlist(mapply(rep, names(fixedParams$map.funcs)[seq_along(x)], x,
-                                                            USE.NAMES = F)))]
+                                    function(x) unlist(mapply(rep, names(fixedParams$map.funcs)[seq_along(x)], x,
+                                                              USE.NAMES = F)))]
 
 # define correlation matrix which differs between percentage of relevant variables
 # for the correlated predictors case and uncorrelated case

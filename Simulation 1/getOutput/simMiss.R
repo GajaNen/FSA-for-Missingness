@@ -13,7 +13,7 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
   if (is.null(coefSpl)) coefSpl <- runif(deg + 2, 0, 1)
   bas <- splines::bs(x = x, knots = median(x), degree = deg, intercept = TRUE)
   return(as.vector(bas %*% coefSpl))
-
+  
 }
 
 ###--------------------------------------------------------------------------###
@@ -28,7 +28,7 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
 #true predictors (preds: char vector)
 
 simProbit <- function(params, dat){
-
+  
   z <- qnorm(1-params$pm)
   out <- data.table::data.table(LP=numeric(params$N))
   is.mnar <- params$mechanism == "mnar"
@@ -36,7 +36,7 @@ simProbit <- function(params, dat){
   catNms <- names(dat)[grep("(^RelBin)|(^RelOrd)", names(dat))]
   allNms <- c(contNms, catNms)
   dat.rel <- data.table::copy(dat[,..allNms])
-
+  
   # apply splines to continuous X (and y if is.mnar)
   dat.rel[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
           .SDcols = contNms]
@@ -60,7 +60,7 @@ simProbit <- function(params, dat){
   
   # define theoretical sd of lp
   sd.LP <- as.numeric(sqrt(explSig + resSig))
-    
+  
   # calculate linear predictor
   out[, LP := as.matrix(dat.rel) %*% (coefsRel) + 
         stats::rnorm(params$N, 0, sqrt(resSig))]

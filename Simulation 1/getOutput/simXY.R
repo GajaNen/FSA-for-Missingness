@@ -61,19 +61,19 @@ simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
         data.table::as.data.table(stats::pnorm(
           mvnfast::rmvn(n=1000,mu=rep(0,Nsim),
                         sigma=params[[paste0("corMat",prfx)]][[1]])))
-      ]
+  ]
   dts[, (nms) := # apply appropriate quantile funcs to the uniforms to get desired distr
         mapply(function(x,y,z) params$map.funcs[[y]](x, z[1],z[2]), 
-                .SD,  params[[paste0("dists",prfx)]][[1]], 
+               .SD,  params[[paste0("dists",prfx)]][[1]], 
                params[[paste0("params",prfx)]][[1]],
                SIMPLIFY = FALSE),
       .SDcols = nms]
   # locate logistic variables (may not be named with Ord, but must be last 1/3 of vars)
-  cm.reps <- cumsum(params[[paste0("reps",prfx)]][[1]]) 
-  ords <- nms[(cm.reps[3]+1):cm.reps[4]]
+  n.pt <- Nsim %/% 3 # number of X vars per type 
+  ords <- nms[(n.pt*2+1):(n.pt*3)]
   dts[, (ords) := mapply(simOrd, .SD, params[[paste0("popProbs", prfx)]][[1]], 
                          MoreArgs = list(N=params$N), SIMPLIFY = F), 
-       .SDcols = ords] # generate ordinal variables
+      .SDcols = ords] # generate ordinal variables
   return(dts)
 }
 
