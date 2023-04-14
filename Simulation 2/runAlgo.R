@@ -114,7 +114,7 @@ fitAlgo <- function(params, dat){
 #@rpt: number of repetition
 #@nfac: number of varied (primary) factors
 
-simRep <- function(fixed, varied, rpt="test", nfac=4){
+simRep <- function(dt, fixed, varied, rpt="test", nfac=3){
   
   prev <- rep("none", nfac)
   for (i in nrow(varied)){
@@ -123,7 +123,7 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
     changes <- varied[i, 1:nfac] != prev 
     names(changes) <- colnames(varied)[1:nfac]
     s <- .Random.seed
-    if (changes["pr"] || changes["corrPred"]) XY <- simDat(conds)
+    XY <- sampleDT(dt, nrow(dt))
     mssng <- simR(conds, XY)
     XY[, target := factor(mssng$R, labels = c("c","m"))]
     res <- tryCatch(withCallingHandlers(

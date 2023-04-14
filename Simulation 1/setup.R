@@ -123,9 +123,8 @@ variedParams <- data.table::setDT(expand.grid(
 variedParams <- variedParams[!(mechanism=="mcar" & pr == 0.2)]
 
 # TRANSFORMATIONS FOR DISCRETE VARS HIGH AND LOW PR VERSIONS
-HPtrans <- c(sin, exp, cos, sin, sin, sin, sin, sin,
-             sin, exp, exp, exp, sin, exp, exp, exp)
-LPtrans <- c(sin, exp, cos, sin)
+HPtrans <- c(sin, exp, cos, sin, sin, sin, sin, sin)
+LPtrans <- c(sin, exp)
 
 variedParams[, trans := fifelse(pr==0.2, list(HPtrans), list(LPtrans))]
 # fix pseudo R^2 in missingness indicators (maybe per mechanism)

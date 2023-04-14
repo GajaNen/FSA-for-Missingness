@@ -23,30 +23,29 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
 # mar or mnar data
 
 #@dat: DT which must contain all relevant variables to be used as preds & Y if mnar
+# it can be the same data over all repetitions or each time different
 
 #return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
 #true predictors (preds: char vector)
 
 simProbit <- function(params, dat){
   
-  z <- qnorm(1-params$pm)
-  out <- data.table::data.table(LP=numeric(params$N))
+  z <- switch(params$mechanism,
+              "marr" = qnorm(1-params$pm),
+              "mnar" = qnorm(1-params$pm),
+              "marc" = c(qnorm(0.5-params$pm/2), qnorm(0.5+params$pm/2)),
+              "mart" = c(qnorm(params$pm/2), qnorm(1-params$pm/2)))
+    
+  out <- data.table::data.table(LP=numeric(params$N),R=numeric(params$N))
   is.mnar <- params$mechanism == "mnar"
-  contNms <- c(names(dat)[grep("^RelCont", names(dat))], c("Y")[is.mnar])
-  ordNms <- names(dat)[grep("(^RelOrd)", names(dat))]
-  allNms <- c(contNms, names(dat)[grep("(^RelBin)", names(dat))], ordNms)
+  contNms <- names(dat)[grep("^RelCont", names(dat))]
+  catNms <- c(names(dat)[grep("(^RelBin)|(^RelOrd)", names(dat))],c("Y")[is.mnar])
+  allNms <- c(contNms, catNms)
   dat.rel <- data.table::copy(dat[,..allNms])
   
-  # apply splines to continuous X (and y if is.mnar)
+  # apply splines to continuous X
   dat.rel[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
           .SDcols = contNms]
-  
-  # apply some transformations to any ordinal X
-  if (is.null(params$trans)){
-    transf <- lapply(seq_along(ordNms), function(x) identity)
-  } else transf <- unlist(params$trans)
-  dat.rel[, (ordNms) := mapply({function(f, x) f(x)}, transf, .SD, SIMPLIFY = FALSE), 
-          .SDcols = ordNms]
   
   # scale variables and assign moderately large coefs, the largest if mnar
   dat.rel[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
@@ -64,10 +63,12 @@ simProbit <- function(params, dat){
   # calculate linear predictor
   out[, LP := as.matrix(dat.rel) %*% (coefsRel) + 
         stats::rnorm(params$N, 0, sqrt(resSig))]
-  #discretise at z*theoretical SD above mean of latent variable
-  return(list(R=out[, as.numeric(LP > ((z) * (sd.LP)))],
-              preds=allNms,
-              coefs=coefsRel))
+  #discretise
+  out[, R := switch(params$mechanism,
+                    "marr" = as.numeric(LP > ((z) * (sd.LP))),
+                    "marc" = as.numeric(LP %between% c((z[1]) * (sd.LP),(z[2]) * (sd.LP))),
+                    "mart" = as.numeric((LP < ((z[1]) * (sd.LP))) | LP > ((z[2]) * (sd.LP))))]
+  return(list(R=out[, R],preds=allNms,coefs=coefsRel))
   
 }
 
