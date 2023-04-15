@@ -29,7 +29,8 @@ x <- foreach(nMc=1:10, .packages=c("mvnfast",
                                    "FSelector",
                                    "FSinR",
                                    "sparseSVM",
-                                   "Biocomb")) %dopar% {
+                                   "Biocomb",
+                                   "rlecuyer")) %dopar% {
                                      simRep(fixedParams, variedParams, nMc)
                                    }
 
