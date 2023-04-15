@@ -1,9 +1,12 @@
-#options(scipen=999)
-#rm(list=ls(all=T))
-#gc()
+# options(scipen=999)
+# rm(list=ls(all=T))
+# gc()
 if (!grepl("(.*Thesis-main$)|(.*Thesis$)", getwd())){
   stop("change WD to Thesis dir!")
 }
+
+set.seed(1813544)
+
 lapply(c(list.files(file.path("Simulation 1", "getOutput"),pattern=".*R$",full.names = T),
          file.path("Simulation 1", "setup.R")), 
        source)
@@ -16,7 +19,6 @@ registerDoParallel(cl)
 #registerDoRNG(1813544)
 
 #options(error = dump.frames)
-set.seed(1813544)
 
 x <- foreach(nmc=1:10, .packages=c("mvnfast",
                                    "data.table",

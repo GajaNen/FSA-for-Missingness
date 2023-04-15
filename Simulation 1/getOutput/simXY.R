@@ -53,7 +53,7 @@ simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
   #   stop(paste0("number of probability vectors for odinal must be a third of ",prfx,"evant vars."))
   # }
   if (is.null(dts)) { # if no DT provided, create a new one
-    dts <- data.table::setDT(lapply(1:Nsim, rep, NA, 1000))
+    dts <- data.table::setDT(lapply(1:Nsim, rep, NA, params$N))
     nms <- names(dts)
   } #else if (is.null(nms)) stop("Provide names for variables to be modified in dts.")
   
@@ -61,7 +61,7 @@ simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
         data.table::as.data.table(stats::pnorm(
           mvnfast::rmvn(n=1000,mu=rep(0,Nsim),
                         sigma=params[[paste0("corMat",prfx)]][[1]])))
-  ]
+      ]
   dts[, (nms) := # apply appropriate quantile funcs to the uniforms to get desired distr
         mapply(function(x,y,z) params$map.funcs[[y]](x, z[1],z[2]), 
                .SD,  params[[paste0("dists",prfx)]][[1]], 
@@ -90,15 +90,12 @@ simDat <- function(params){
     stop("Adjust Ntotal or pr so that Nrel and Nirrl are a multiple of 3.")
   } # always 1/3 Cont, Bin, Ord each!
   out <- data.table::setDT(lapply(1:(params$Ntotal+1),
-                                  function (x) rep(0, 1000)))
-  # this is ugly but works
-  data.table::setnames(out, c(paste0("Rel", rep(c("Cont", "Bin", "Ord"),each=Nrel/3),1:(Nrel/3)),
-                              "Y"[params$addY],
-                              paste0("Irrel", rep(c("Cont", "Bin", "Ord"),each=Nirrl/3),1:(Nirrl/3))))
-  nmsRel <- c(names(out)[grep("^Rel", names(out))], "Y"[params$addY]) # relevant + y if addY
-  simCorMix(params = params, prfx = "Rel", dts=out, nms=nmsRel)
-  nmsIrrl <- names(out)[grep("^Irrel", names(out))] # irrelevant
-  simCorMix(params = params, prfx = "Irrel", dts = out, nms=nmsIrrl)
+                                  function (x) rep(0, params$N)))
+  nms <-  mapply(function(x,y) paste0(x, rep(c("Cont", "Bin", "Ord"),each=y/3),1:(y/3)),
+                 c("Rel", "Irrel"), c(Nrel, Nirrl))
+  data.table::setnames(out, c(nms$Rel, "Y"[params$addY], nms$Irrel))
+  simCorMix(params = params, prfx = "Rel", dts=out, nms=c(nms$Rel,"Y"[params$addY]))
+  simCorMix(params = params, prfx = "Irrel", dts = out, nms=nms$Irrel)
   return(out)
 }
 

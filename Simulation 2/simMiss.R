@@ -25,8 +25,7 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
 #@dat: DT which must contain all relevant variables to be used as preds & Y if mnar
 # it can be the same data over all repetitions or each time different
 
-#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
-#true predictors (preds: char vector)
+#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector)
 
 simProbit <- function(params, dat){
   
@@ -68,7 +67,7 @@ simProbit <- function(params, dat){
                     "marr" = as.numeric(LP > ((z) * (sd.LP))),
                     "marc" = as.numeric(LP %between% c((z[1]) * (sd.LP),(z[2]) * (sd.LP))),
                     "mart" = as.numeric((LP < ((z[1]) * (sd.LP))) | LP > ((z[2]) * (sd.LP))))]
-  return(list(R=out[, R],preds=allNms,coefs=coefsRel))
+  return(list(R=out[, R],coefs=coefsRel))
   
 }
 
@@ -78,15 +77,12 @@ simProbit <- function(params, dat){
 
 #@dat: see above
 
-#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
-# true predictors (preds: char vector)
+#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector)
 
 simR <- function(params, dat){
   
   if (params$mechanism == "mcar"){
-    return(list(R=rbinom(params$N, size = 1, prob = params$pm),
-                preds=NULL,
-                coefs=NULL))
+    return(list(R=rbinom(params$N, size = 1, prob = params$pm),coefs=NULL))
   } else return(simProbit(params, dat))
   
 }

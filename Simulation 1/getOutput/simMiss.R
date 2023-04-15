@@ -24,8 +24,7 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
 
 #@dat: DT which must contain all relevant variables to be used as preds & Y if mnar
 
-#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
-#true predictors (preds: char vector)
+#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector
 
 simProbit <- function(params, dat){
   
@@ -65,9 +64,7 @@ simProbit <- function(params, dat){
   out[, LP := as.matrix(dat.rel) %*% (coefsRel) + 
         stats::rnorm(params$N, 0, sqrt(resSig))]
   #discretise at z*theoretical SD above mean of latent variable
-  return(list(R=out[, as.numeric(LP > ((z) * (sd.LP)))],
-              preds=allNms,
-              coefs=coefsRel))
+  return(list(R=out[, as.numeric(LP > ((z) * (sd.LP)))],coefs=coefsRel))
   
 }
 
@@ -77,15 +74,12 @@ simProbit <- function(params, dat){
 
 #@dat: see above
 
-#return: a list of the binary indicator (R:num vector), coefs for GAM (coefs:num vector),
-# true predictors (preds: char vector)
+#return: a list of the binary indicator (R:num vector) & coefs for GAM (coefs:num vector),
 
 simR <- function(params, dat){
   
   if (params$mechanism == "mcar"){
-    return(list(R=rbinom(params$N, size = 1, prob = params$pm),
-                preds=NULL,
-                coefs=NULL))
+    return(list(R=rbinom(params$N, size = 1, prob = params$pm), coefs=NULL))
   } else return(simProbit(params, dat))
   
 }

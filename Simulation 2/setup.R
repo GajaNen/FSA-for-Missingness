@@ -12,7 +12,7 @@
 # @fcbcThres: vector or list of nums, thresholds for FCBC (fast correlation based filter)
 # @rankers: list of names:function (RFE, SA, glmnet, i.e. all from caret) or names of ranker FSA (others)
 # @subsest: list of name:NULL for methods which output subsets
-fixedParams <- list(dir="Results",
+fixedParams <- list(dir=file.path("Simulation 2", "Results"),
                     N=299, 
                     kInn=3, 
                     kOut=5, 

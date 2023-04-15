@@ -117,7 +117,7 @@ fitAlgo <- function(params, dat){
 simRep <- function(fixed, varied, rpt="test", nfac=4){
   
   prev <- rep("none", nfac)
-  for (i in nrow(varied)){
+  for (i in 1:nrow(varied)){
     warns <- errs <- list()
     conds <- c(fixed, varied[i,])
     changes <- varied[i, 1:nfac] != prev 
@@ -137,8 +137,7 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
       }
     )
     if (!dir.exists(conds$dir)) dir.create(conds$dir)
-    saveRDS(list(tp=mssng$preds,
-                 coef=mssng$coefs,
+    saveRDS(list(coef=mssng$coefs,
                  res=res,
                  RNGstate=s,
                  changes=changes),
