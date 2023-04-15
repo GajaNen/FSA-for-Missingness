@@ -23,8 +23,10 @@ simOrd <- function(logisZ, lP, N){
 
 ###--------------------------------------------------------------------------###
 
-# generate (ir)relevant variables of mixed types with a given correlation structure
-# with a Gaussian copula (only non-parametric correlation structure retained)
+# generate (ir)relevant variables (and Y if addY)
+# of mixed types with a given correlation structure
+# and marginal distributions with a Gaussian copula 
+# (only non-parametric correlation structure retained)
 
 # this function can have a side effect of modifying the original DT if this
 # DT is an input together with the names of relevant variables
@@ -89,13 +91,12 @@ simDat <- function(params){
   if ((Nrel %% 3) || (Nirrl %% 3)) {
     stop("Adjust Ntotal or pr so that Nrel and Nirrl are a multiple of 3.")
   } # always 1/3 Cont, Bin, Ord each!
-  out <- data.table::setDT(lapply(1:(params$Ntotal+1),
-                                  function (x) rep(0, params$N)))
+  out <- data.table::setDT(lapply(1:(params$Ntotal+params$addY),function(x) numeric(params$N)))
   nms <-  mapply(function(x,y) paste0(x, rep(c("Cont", "Bin", "Ord"),each=y/3),1:(y/3)),
-                 c("Rel", "Irrel"), c(Nrel, Nirrl))
+                 c("Rel", "Irrel"), c(Nrel, Nirrl)) # name rel & irrel vars
   data.table::setnames(out, c(nms$Rel, "Y"[params$addY], nms$Irrel))
-  simCorMix(params = params, prfx = "Rel", dts=out, nms=c(nms$Rel,"Y"[params$addY]))
-  simCorMix(params = params, prfx = "Irrel", dts = out, nms=nms$Irrel)
+  simCorMix(params = params, prfx = "Rel", dts=out, nms=c(nms$Rel,"Y"[params$addY])) # sim rel vars + y if addY
+  simCorMix(params = params, prfx = "Irrel", dts = out, nms=nms$Irrel) # sim irrel vars
   return(out)
 }
 

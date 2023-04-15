@@ -20,7 +20,7 @@ registerDoParallel(cl)
 
 #options(error = dump.frames)
 
-x <- foreach(nmc=1:10, .packages=c("mvnfast",
+x <- foreach(nMc=1:10, .packages=c("mvnfast",
                                    "data.table",
                                    "splines",
                                    "caret",
@@ -29,8 +29,8 @@ x <- foreach(nmc=1:10, .packages=c("mvnfast",
                                    "FSelector",
                                    "FSinR",
                                    "sparseSVM",
-                                   "Biocomb")) %dorng% {
-                                     simRep(fixedParams, variedParams,nmc)
+                                   "Biocomb")) %dopar% {
+                                     simRep(fixedParams, variedParams, nMc)
                                    }
 
 stopCluster(cl)

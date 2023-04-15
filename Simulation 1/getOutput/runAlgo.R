@@ -116,6 +116,10 @@ fitAlgo <- function(params, dat){
 
 simRep <- function(fixed, varied, rpt="test", nfac=4){
   
+  rlecuyer::.lec.SetPackageSeed(rep(fixed$seed, 6))
+  if (!rpt %in% .lec.GetStreams()) rlecuyer::.lec.CreateStream(1:fixed$streams)
+  rlecuyer::.lec.CurrentStream(rpt)
+  
   prev <- rep("none", nfac)
   for (i in 1:nrow(varied)){
     warns <- errs <- list()

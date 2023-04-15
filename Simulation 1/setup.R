@@ -5,7 +5,7 @@
 # FOR TESTING PURPOSES ONLY
 # @dir: char, output directory for saving results
 # @N: num, number of samples
-# @addY: logical (T or NULL/F) simulate Y with a copula or not (specifically with X relevant)
+# @addY: logical (T or F, not NULL!) simulate Y with a copula or not (specifically with X relevant)
 # @kInn: int, number of inner level folds for algorithms which use two levels of resampling scheme
 # @kOut: int. number of folds for outer (or only) level of resampling
 # @sizes: vector of ints, sizes considered in RFE
@@ -17,6 +17,8 @@
 # @rankers: list of names:function (RFE, SA, glmnet, i.e. all from caret) or names of ranker FSA (others)
 # @subsest: list of name:NULL for methods which output subsets
 fixedParams <- list(dir=file.path("Simulation 1", "Results"),
+                    seed=1813544,
+                    streams=500,
                     N=1000, 
                     addY=T,
                     kInn=3, 
