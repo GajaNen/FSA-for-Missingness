@@ -1,9 +1,9 @@
 getPF <- function(conds, nrpt){
   
   path <- conds$dir
-  subsets <- data.table::setDT(lapply(seq_along(c(conds$subsets, conds$fcbcThres)),
+  subsets <- data.table::setDT(lapply(seq_along(c(conds$subsets, c(0, 0.1, 0.3, 0.5))),
                                       function(x) numeric(nrpt)))
-  data.table::setnames(subsets, c(names(conds$subsets),paste0("FCBC_", conds$fcbcThres)))
+  data.table::setnames(subsets, c(names(conds$subsets),paste0("FCBC_", c(0, 0.1, 0.3, 0.5))))
   #all <- c(names(conds$rankers),names(conds$subsets))
   all <- c(names(subsets)) # just for now when no code for rankings yet
   JI_sim <- array(NA, dim=c(length(all), length(all), nrpt))

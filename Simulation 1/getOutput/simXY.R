@@ -63,7 +63,7 @@ simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
         data.table::as.data.table(stats::pnorm(
           mvnfast::rmvn(n=1000,mu=rep(0,Nsim),
                         sigma=params[[paste0("corMat",prfx)]][[1]])))
-      ]
+  ]
   dts[, (nms) := # apply appropriate quantile funcs to the uniforms to get desired distr
         mapply(function(x,y,z) params$map.funcs[[y]](x, z[1],z[2]), 
                .SD,  params[[paste0("dists",prfx)]][[1]], 
@@ -101,4 +101,3 @@ simDat <- function(params){
 }
 
 ###--------------------------------------------------------------------------###
-

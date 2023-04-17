@@ -47,8 +47,16 @@ fitAlgo <- function(params, dat){
     substs[[name]] <- resSA$optVariables
     acc[[name]] <- resSA$averages[resSA$optIter, "Accuracy"]
   }
+  substs <- c(substs, setNames(lapply(params$fcbcThres, #fast correlation-based filter
+                                      function(x) 
+                                        try(FCBF::fcbf(discretize_exprs(t(dat[,!"target"])),
+                                                       t(dat[,target]),
+                                                       minimum_su=x), 
+                                            silent = T)),  
+                               paste0("FCBC_", params$fcbcThres))) # apply different thresholds
+  
   binv <- grep(".*Bin",names(dat)) # if using SVM-RFE move RFE chunk before conversion to factors
-  dat[, (binv) := lapply(.SD, factor, labels = c("z","o")), .SDcols = binv]
+  dat[, (binv) := lapply(.SD, factor), .SDcols = binv]
   #recursive feature elimination
   for (name in intersect(names(all), c("rfRFE", "linSvmRFE", "rbfSvmRFE"))){
     # specify controls, appropriate set of functions and method for the given name
@@ -90,17 +98,10 @@ fitAlgo <- function(params, dat){
   # Boruta & ReliefF
   ranks[, Boruta := (Boruta::Boruta(target~., data = dat))$finalDecision]
   res <- ranger::ranger(target~., data=dat, importance = "impurity",splitrule = "gini",
-                        oob.error = T)
+                        oob.error = T, mtry = 24)
   acc[["RF"]] <- 1 - res$prediction.error
   ranks[, RF := res$variable.importance]
   ranks[, ReliefF := FSelector::relief(target~., data=dat,sample.size = 10)[,1]]
-  substs <- c(substs, setNames(lapply(params$fcbcThres, #fast correlation-based filter
-                                      function(x) Biocomb::select.fast.filter(
-                                        dat,#last col must be the target
-                                        disc.method = "MDL",
-                                        threshold = x,
-                                        attrs.nominal = binv)),
-                               paste0("FCBC_", params$fcbcThres))) # apply different thresholds
   return(list(rankers=ranks, subsets=substs, accuracies=acc))
 }
 
@@ -117,7 +118,7 @@ fitAlgo <- function(params, dat){
 simRep <- function(fixed, varied, rpt="test", nfac=4){
   
   rlecuyer::.lec.SetPackageSeed(rep(fixed$seed, 6))
-  if (!rpt %in% .lec.GetStreams()) rlecuyer::.lec.CreateStream(1:fixed$streams)
+  if (!rpt %in% rlecuyer::.lec.GetStreams()) rlecuyer::.lec.CreateStream(1:fixed$streams)
   rlecuyer::.lec.CurrentStream(rpt)
   
   prev <- rep("none", nfac)

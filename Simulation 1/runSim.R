@@ -29,10 +29,13 @@ x <- foreach(nMc=1:10, .packages=c("mvnfast",
                                    "FSelector",
                                    "FSinR",
                                    "sparseSVM",
-                                   "Biocomb",
+                                   "FCBF",
                                    "rlecuyer")) %dopar% {
-                                     simRep(fixedParams, variedParams, nMc)
+                                     simRep(fixedParams, variedParams[20,], nMc)
                                    }
+
+#res1 <- readRDS("Simulation 1/Results/mech_mnar_pm_0.5_corrPred_1_pr_0.2_rep_2.RDS")
+
 
 stopCluster(cl)
 registerDoSEQ()
