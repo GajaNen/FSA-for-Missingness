@@ -52,39 +52,20 @@ fixedParams <- list(dir=file.path("Simulation 1", "Results"),
                                    "hyb"=NULL)
 )
 
-# always generate X relevant and Y together, irrelevant separately
-# TWO LEVELS: COMPLETELY INDEPEDENT RELEVANT VARIABLES WITH SOME DEPENDENCY WITH Y
-# AND SOME DEPENDECY BETWEEN RELEVANT VARIABLES AND WITH Y
-# IRRELEVANT VARIABLES ARE ALWAYS INDEPENDENT FROM EACH OTHER AND X RELEVANT AND Y
-
-# THE SAID DEPENDENCY IS NON-PARAMETRIC (E.G. KENDALL'S CORRELATION)
-# WHICH FOR GAUSSIAN COPULA HAS A BIJECTIVE TRANSFORMATION TO PEARSON'S RHO
-# this associated rho matrix then IS
-# USED IN GENERATING NORMALS FOR COPULA --- KENDALL'S CORRELATION PRESERVED 
-# WITH TRANSFORMATIONS TO OTHER DISTRIBUTIONS
-
-# IN RELATION TO THE picture in the thesis draft: X->Y, Y->Xrel & no Z &
-# additional set of independent (between each other & with Xrel and Y) irrelevant variables
 
 # population correlation matrices for Gaussian copula 
 
-# THIS IS A PROVISIONAL WAY TO GENERATE COR MATRIX JUST FOR TESTING PURPOSES
-# in the actual population matrix used for the simulation, there will be dependency
-# Between Xrel and Xrel-Y or only Xrel-Y
-
-
 #cor mat low percentage relevant variables and Y when corrPred==1
 n <- fixedParams$addY==T
-cm_lp <- cov2cor(genPositiveDefMat(dim=fixedParams$Ntotal*0.05+n, covMethod = "eigen")$Sigma)
-#cor mat high percentage relevant variables (Xrel and Y) when corrPred==1
-cm_hp <- cov2cor(genPositiveDefMat(dim=fixedParams$Ntotal*0.2+n, covMethod = "eigen")$Sigma)
-
-
 Nt <- fixedParams$Ntotal
+cm_lp <- rcorrmatrix(Nt*0.05 + n, 1)
+#cor mat high percentage relevant variables (Xrel and Y) when corrPred==1
+cm_hp <- rcorrmatrix(Nt*0.2 + n, 1)
 
-# THIS IS A PROVISIONAL WAY TO GENERATE CORS XREL-Y JUST
-# TO MAKE SURE THERE'S SOME DEPENDENCY
-R2y <- 0.15
+
+# matrices (high and low percentage of rel vars) for corrPred==0
+
+R2y <- 0.2
 
 # matrices (high and low percentage of rel vars) for corrPred==0
 
@@ -115,17 +96,11 @@ variedParams <- data.table::setDT(expand.grid(
 )
 
 
-# ALL THESE PARAMETERS ARE JUST FOR TESTING PURPOSES
-# PR WON'T BE VARIED IN CASES WHEN MECHANISM IS MCAR TO REDUCE RUN TIME
-# SINCE INDICATOR IS GENERATED RANDOMLY ANYWAY
-# another way to reduce number of conditions is to use only Y as a predictor in mnar
-# this way at least PR doesn't have to be varied (and maybe even corrPred), which means
-# at least 4 conditions less 
 
 variedParams <- variedParams[!(mechanism=="mcar" & pr == 0.2)]
 
 # TRANSFORMATIONS FOR DISCRETE VARS HIGH AND LOW PR VERSIONS
-HPtrans <- c(sin, exp, cos, sin, sin, sin, sin, sin)
+HPtrans <- c(sin, exp, exp, sin, log, tan, exp, cospi)
 LPtrans <- c(sin, exp)
 
 variedParams[, trans := fifelse(pr==0.2, list(HPtrans), list(LPtrans))]
@@ -133,47 +108,84 @@ variedParams[, trans := fifelse(pr==0.2, list(HPtrans), list(LPtrans))]
 variedParams[mechanism!="mcar", R2r := 0.6]
 
 # always 1/3 Cont, Bin, Ord in this order (but within each type, distributions can var)
-# set some test parameters for normal, gamma, binomial, logistic distributions (relevant)
-# and population baseline probs for ordinal vars + Y
+
 Nt <- fixedParams$Ntotal
-norms <- list(c(mean = 0,sd = 1))
-gams <- list(c(shape = 0.2, rate = 1))
-binsp <- list(c(size=1, prob=0.3))
+norms_hp_r <- c(rep(list(c(mean = 0, sd = 1)), 2), rep(list(c(mean = 2, sd = 5)), 2))
+gams_hp_r <- c(rep(list(c(shape = 0.2, rate = 1)), 2), rep(list(c(shape = 2, rate=3)), 2))
+binsp_hp_r <- c(rep(list(c(size=1, prob=0.3)), 2), rep(list(c(size=1, prob=0.7)), 2),
+           rep(list(c(size=1, prob=0.5)), 2), rep(list(c(size=1, prob=0.1)), 2))
+norms_lp_r  <- list(c(mean = 0, sd = 1))
+gams_lp_r <- list(c(shape = 0.2, rate = 1))
+binsp_lp_r <- c(rep(list(c(size=1, prob=0.3)), 1), rep(list(c(size=1, prob=0.5)), 1))
+
 logsp <- list(c(location = 0, scale = 1))
 paramy <- list(c(shape1=2,shape2=5))
-pops <- c(0.2, 0.1, 0.3, 0.2, 0.2)
 
-variedParams[, paramsRel := lapply(pr, function(n) c(rep(norms, (Nt)*n/6),
-                                                     rep(gams, (Nt)*n/6),
-                                                     rep(binsp, (Nt)*n/3),
-                                                     rep(logsp, (Nt)*n/3),
-                                                     paramy))]
+variedParams[, paramsRel := 
+               lapply(pr, function(x){
+                 if(x == 0.2){
+                   c(norms_hp_r, gams_hp_r, binsp_hp_r, rep(logsp, (Nt)*x/3),paramy)
+                 } else {
+                   c(norms_lp_r, gams_lp_r, binsp_lp_r, rep(logsp, (Nt)*x/3),paramy)
+                 }
+               })
+             ]
+
 
 variedParams[, popProbsRel := 
-               lapply(pr, function(n) lapply(1:((Nt)*n/3),
-                                             function(x) pops))]
+               lapply(pr, function(x)
+                 c(rep(list(c(0.2, 0.1, 0.3, 0.2, 0.2)), Nt*x/6), 
+                   rep(list(c(0.4, 0.1, 0.1, 0.2, 0.2)), Nt*x/6))
+                 )
+             ]
+
 
 # set some params for normal, gamma, binomial distributions (irrelevant)
-variedParams[, paramsIrrel := lapply(pr, function(n) c(rep(norms, (Nt) * (1 - n) / 6),
-                                                       rep(gams, (Nt) * (1 - n) / 6),
-                                                       rep(binsp, (Nt) * (1 - n) / 3),
-                                                       rep(logsp, (Nt) * (1 - n) / 3)))]
+Ni_lp <- Nt-Nt*0.05
+Ni_hp <- Nt-Nt*0.2
+norms_hp_i <- c(rep(list(c(mean = 0, sd = 1)), Ni_hp/12), rep(list(c(mean = 2, sd = 5)), Ni_hp/12))
+gams_hp_i <- c(rep(list(c(shape = 0.2, rate = 1)), Ni_hp/12), rep(list(c(shape = 2, rate=3)), Ni_hp/12))
+binsp_hp_i <- c(rep(list(c(size=1, prob=0.3)), Ni_hp/12), rep(list(c(size=1, prob=0.7)), Ni_hp/12),
+           rep(list(c(size=1, prob=0.5)), Ni_hp/12), rep(list(c(size=1, prob=0.1)), Ni_hp/12))
+logsp <- list(c(location = 0, scale = 1))
+
+norms_lp_i <- rep(list(c(mean = 0, sd = 1)), Ni_lp/6)
+gams_lp_i <- rep(list(c(shape = 0.2, rate = 1)), Ni_lp/6)
+binsp_lp_i <- c(rep(list(c(size=1, prob=0.3)), Ni_lp/6), 
+           rep(list(c(size=1, prob=0.5)), Ni_lp/6))
+
+
+variedParams[, paramsIrrel := 
+               lapply(pr, function(x){
+                 if (x == 0.05){
+                   c(norms_lp_i, gams_lp_i, binsp_lp_i, rep(logsp, (Nt)*(1-x)/3))
+                 } else {
+                   c(norms_hp_i, gams_hp_i, binsp_hp_i, rep(logsp, (Nt)*(1-x)/3))
+                 }
+               })]
 
 variedParams[, popProbsIrrel := 
-               lapply(pr,function(n) lapply(1:((Nt) * (1 - n) / 3),
-                                            function(x) pops))]
+               lapply(pr, function(x)
+                 c(rep(list(c(0.2, 0.1, 0.3, 0.2, 0.2)), Nt*(1-x)/6), 
+                   rep(list(c(0.4, 0.1, 0.1, 0.2, 0.2)), Nt*(1-x)/6))
+               )
+             ]
 
 # set repetitions of each type of var
-variedParams[, repsRel := lapply(pr, function(x) c(Nt*x/6, Nt*x/6, Nt*x/3, Nt*x/3, 1))]
-variedParams[, repsIrrel := lapply(pr, function(x) c(Nt*(1-x)/6, Nt*(1-x)/6, Nt*(1-x)/3, Nt*(1-x)/3))]
+variedParams[, repsRel := 
+               lapply(pr, function(x) c(Nt*x/6, Nt*x/6, Nt*x/3, Nt*x/3, 1))]
+variedParams[, repsIrrel := 
+               lapply(pr, function(x) c(Nt*(1-x)/6, Nt*(1-x)/6, Nt*(1-x)/3, Nt*(1-x)/3))]
 # set distributions to be used for mapping to appropriate quantile function
-variedParams[, distsRel := lapply(repsRel, 
-                                  function(x) unlist(mapply(rep, names(fixedParams$map.funcs), x,
-                                                            USE.NAMES = F)))]
+variedParams[, distsRel := 
+               lapply(repsRel,
+                      function(x) unlist(mapply(rep, names(fixedParams$map.funcs), x,
+                                                USE.NAMES = F)))]
 
-variedParams[, distsIrrel := lapply(repsIrrel, 
-                                    function(x) unlist(mapply(rep, names(fixedParams$map.funcs)[seq_along(x)], x,
-                                                              USE.NAMES = F)))]
+variedParams[, distsIrrel := 
+               lapply(repsIrrel,
+                      function(x) unlist(mapply(rep, names(fixedParams$map.funcs)[seq_along(x)], x,
+                                        USE.NAMES = F)))]
 
 # define correlation matrix which differs between percentage of relevant variables
 # for the correlated predictors case and uncorrelated case
@@ -189,4 +201,4 @@ variedParams[, corMatIrrel := lapply(pr, function(x) diag(1, Nt*(1-x)))]
 
 
 # coefs for splines
-variedParams[, theta := list(c(0.3, 0.5, 0.6, 0.1, 0.2))]
+variedParams[, theta := list(runif(fixedParams$deg + 2, 0.1, 0.9))]

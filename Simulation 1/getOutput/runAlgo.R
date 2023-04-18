@@ -98,7 +98,7 @@ fitAlgo <- function(params, dat){
   # Boruta & ReliefF
   ranks[, Boruta := (Boruta::Boruta(target~., data = dat))$finalDecision]
   res <- ranger::ranger(target~., data=dat, importance = "impurity",splitrule = "gini",
-                        oob.error = T, mtry = 24)
+                        oob.error = T, mtry = floor(params$Ntotal * 0.2))
   acc[["RF"]] <- 1 - res$prediction.error
   ranks[, RF := res$variable.importance]
   ranks[, ReliefF := FSelector::relief(target~., data=dat,sample.size = 10)[,1]]
@@ -130,6 +130,7 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
     s <- .Random.seed
     if (changes["pr"] || changes["corrPred"]) XY <- simDat(conds)
     mssng <- simR(conds, XY)
+    XY[, names(XY) := lapply(.SD, scale), .SDcols=!"Y"]
     XY[, target := factor(mssng$R, labels = c("c","m"))]
     res <- tryCatch(withCallingHandlers(
       expr = fitAlgo(conds, XY[,!"Y"]), 
