@@ -130,7 +130,8 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
     s <- .Random.seed
     if (changes["pr"] || changes["corrPred"]) XY <- simDat(conds)
     mssng <- simR(conds, XY)
-    XY[, names(XY) := lapply(.SD, scale), .SDcols=!"Y"]
+    nms <- names(XY)[grep("(.*Cont)|(.*Ord)", names(XY))]
+    XY[, (nms) := lapply(.SD, scale), .SDcols=nms]
     XY[, target := factor(mssng$R, labels = c("c","m"))]
     res <- tryCatch(withCallingHandlers(
       expr = fitAlgo(conds, XY[,!"Y"]), 
