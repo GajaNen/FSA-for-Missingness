@@ -48,8 +48,7 @@ fixedParams <- list(dir=file.path("Simulation 1", "Results"),
                                    "EN"="glmnet", 
                                    "rbfSvmSA"="svmRadial",
                                    "rfRFE"="ranger", 
-                                   "l1SVM"=NULL,
-                                   "hyb"=NULL)
+                                   "l1SVM"=NULL)
 )
 
 
