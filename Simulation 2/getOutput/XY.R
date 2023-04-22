@@ -9,6 +9,4 @@ sampleDT <- function(dt, N){
   return(dts)
 }
 
-# should it be stratified on outcome?
-
 ###--------------------------------------------------------------------------###

@@ -94,7 +94,7 @@ getPF <- function(conds, nrpt, nms){
               similarity=JI_sim_mean,
               PFM=subsets_mean,power=pwr/nrpt,
               stability=JI_stab, rnksM=rnkrs_thr$means,
-              rnksSD=rnkrs_thr$sds))
+              rnksSD=rnkrs_thr$sds, errs=errs))
 }
 
 ###--------------------------------------------------------------------------###

@@ -29,22 +29,11 @@ simSpline <- function(x, deg=3, coefSpl=NULL){
 
 simProbit <- function(params, dat){
   
-  z <- switch(params$mechanism,
-              "marr" = qnorm(1-params$pm),
-              "mnar" = qnorm(1-params$pm),
-              "marc" = c(qnorm(0.5-params$pm/2), qnorm(0.5+params$pm/2)),
-              "mart" = c(qnorm(params$pm/2), qnorm(1-params$pm/2)))
-    
-  out <- data.table::data.table(LP=numeric(params$N),R=numeric(params$N))
+  z <- qnorm(1-params$pm)
+  out <- data.table::data.table(LP=numeric(params$N))
   is.mnar <- params$mechanism == "mnar"
-  contNms <- names(dat)[grep("^RelCont", names(dat))]
-  catNms <- c(names(dat)[grep("(^RelBin)|(^RelOrd)", names(dat))],c("Y")[is.mnar])
-  allNms <- c(contNms, catNms)
+  allNms <- c(names(dat)[grep("^Rel", names(dat))],c("Y")[is.mnar])
   dat.rel <- data.table::copy(dat[,..allNms])
-  
-  # apply splines to continuous X
-  dat.rel[, (contNms) := lapply(.SD, simSpline, deg = params$deg, coefSpl = unlist(params$theta)),
-          .SDcols = contNms]
   
   # scale variables and assign moderately large coefs, the largest if mnar
   dat.rel[, (allNms) := lapply(.SD, scale), .SDcols = allNms]
@@ -63,11 +52,7 @@ simProbit <- function(params, dat){
   out[, LP := as.matrix(dat.rel) %*% (coefsRel) + 
         stats::rnorm(params$N, 0, sqrt(resSig))]
   #discretise
-  out[, R := switch(params$mechanism,
-                    "marr" = as.numeric(LP > ((z) * (sd.LP))),
-                    "marc" = as.numeric(LP %between% c((z[1]) * (sd.LP),(z[2]) * (sd.LP))),
-                    "mart" = as.numeric((LP < ((z[1]) * (sd.LP))) | LP > ((z[2]) * (sd.LP))))]
-  return(list(R=out[, R],coefs=coefsRel))
+  return(list(R=out[, as.numeric(LP > ((z) * (sd.LP)))], coefs=coefsRel))
   
 }
 

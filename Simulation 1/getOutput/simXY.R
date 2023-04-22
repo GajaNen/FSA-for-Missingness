@@ -55,7 +55,7 @@ simCorMix <- function(params, prfx, Nsim=NULL, dts=NULL, nms=NULL){
   #   stop(paste0("number of probability vectors for odinal must be a third of ",prfx,"evant vars."))
   # }
   if (is.null(dts)) { # if no DT provided, create a new one
-    dts <- data.table::setDT(lapply(1:Nsim, rep, NA, params$N))
+    dts <- data.table::setDT(lapply(1:Nsim, function(x) numeric(params$N)))
     nms <- names(dts)
   } #else if (is.null(nms)) stop("Provide names for variables to be modified in dts.")
   

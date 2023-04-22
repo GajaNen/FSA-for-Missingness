@@ -7,9 +7,9 @@ if (!grepl("(.*Thesis-main$)|(.*Thesis$)", getwd())){
 
 set.seed(1813544)
 
-lapply(c(file.path("Simulation 1", "depend.R"),
-         list.files(file.path("Simulation 1", "getOutput"),pattern=".*R$",full.names = T),
-         file.path("Simulation 1", "setup.R")), 
+lapply(c(file.path("Simulation 2", "depend.R"),
+         list.files(file.path("Simulation 2", "getOutput"),pattern=".*R$",full.names = T),
+         file.path("Simulation 2", "setup.R")), 
        source)
 
 
@@ -31,9 +31,7 @@ registerDoParallel(cl)
 
 a <- Sys.time()
 
-x <- foreach(nMc=1:500, .packages=c("mvnfast",
-                                    "data.table",
-                                    "splines",
+x <- foreach(nMc=1:500, .packages=c("data.table",
                                     "caret",
                                     "ranger",
                                     "Boruta",
@@ -42,13 +40,16 @@ x <- foreach(nMc=1:500, .packages=c("mvnfast",
                                     "sparseSVM",
                                     "FCBF",
                                     "rlecuyer")) %dopar% {
-                                      simRep(fixedParams, variedParams, nMc)
+                                      simRep(dt = datPop, 
+                                             fixed = fixedParams, 
+                                             varied = variedParams, 
+                                             rpt = nMc)
                                     }
 
 b <- Sys.time()
 
 print(b-a)
-res1 <- readRDS("Simulation 1/Results/mech_mar_pm_0.5_corrPred_0_pr_0.2_rep_22.RDS")
+res1 <- readRDS("Simulation 2/Results/mech_mar_pm_0.5_corrPred_0_pr_0.2_rep_2.RDS")
 
 stopImplicitCluster()
 stopCluster(cl)

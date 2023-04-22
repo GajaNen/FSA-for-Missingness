@@ -9,7 +9,8 @@
 #feature rankings (DT), feature subsets by algo (list) and accuracies (list)
 fitAlgo <- function(params, dat){
   
-  ranks <- data.table::setDT(lapply(seq_along(params$rankers), rep, NA, params$Ntotal))
+  ranks <- data.table::setDT(lapply(seq_along(params$rankers), 
+                                    function(x) numeric(params$Ntotal)))
   data.table::setnames(ranks, names(params$rankers))
   substs <- vector(mode = "list", length = length(params$subsets))
   names(substs) <- names(params$subsets)
@@ -22,31 +23,31 @@ fitAlgo <- function(params, dat){
   res <- sparseSVM::cv.sparseSVM(X=as.matrix(dat[,!"target"]), 
                                  y=dat[,target], alpha = 1, gamma = 0.1, nlambda=100,
                                  lambda.min = 0.01, screen = "ASR", max.iter = 1000, eps = 1e-5,
-                                 fold.id = ids, nfolds = params$kOut)
+                                 fold.id = ids, nfolds = params$kOut,
+                                 preprocess = "standardize")
   lambda_res <- lambdaSE(res) # one SE rule (largest lambda with 1sdME within smallest)
   substs[["l1SVM"]] <- 
     names(res$fit$weights[-1,lambda_res$bestIndex])[res$fit$weights[-1,lambda_res$bestIndex] != 0]
   acc[["l1SVM"]] <- 1 - lambda_res$bestME
   trControl <- caret::trainControl(method = "cv", number = params$kInn,
-                                   selectionFunction = "oneSE")
+                                   selectionFunction = "oneSE", allowParallel = F)
   #simulated annealing
-  for (name in intersect(names(all), (c("rfSA", "linSvmSA", "rbfSvmSA")))){
-    # specify controls, appropriate set of functions and method for the given name
-    ctrlSA <- caret::safsControl(functions = unlist(ifelse(grepl("^rf", name),
-                                                           list(rfSA), 
-                                                           list(caretSA))),
-                                 method = "cv", number = params$kOut, 
-                                 index = folds, improve = 10)
-    resSA <- caret::safs(x=dat[,!"target"], y=dat[,target],
-                         iters = 10,
-                         safsControl = ctrlSA,
-                         method = all[[name]],
-                         tuneGrid = NULL, # too long otherwise
-                         trControl = trControl,
-                         differences = F)
-    substs[[name]] <- resSA$optVariables
-    acc[[name]] <- resSA$averages[resSA$optIter, "Accuracy"]
-  }
+  # for (name in intersect(names(all), (c("rfSA", "linSvmSA", "rbfSvmSA")))){
+  #   # specify controls, appropriate set of functions and method for the given name
+  #   ctrlSA <- caret::safsControl(functions = unlist(ifelse(grepl("^rf", name),
+  #                                                          list(rfSA), 
+  #                                                          list(caretSA))),
+  #                                method = "cv", number = params$kOut, 
+  #                                index = folds, improve = 10,allowParallel = F)
+  #   resSA <- caret::safs(x=dat[,!"target"], y=dat[,target],
+  #                        iters = 10,
+  #                        safsControl = ctrlSA,
+  #                        method = all[[name]],
+  #                        trControl = trControl,
+  #                        differences = F)
+  #   substs[[name]] <- resSA$optVariables
+  #   acc[[name]] <- resSA$averages[resSA$optIter, "Accuracy"]
+  # }
   substs <- c(substs, setNames(lapply(params$fcbcThres, #fast correlation-based filter
                                       function(x) 
                                         try(FCBF::fcbf(discretize_exprs(t(dat[,!"target"])),
@@ -64,7 +65,7 @@ fitAlgo <- function(params, dat){
                                                            list(rfFuncs), 
                                                            list(caretFuncs))), 
                                  method = "cv", number = params$kOut, 
-                                 index = folds)
+                                 index = folds, allowParallel = F)
     resRFE <- caret::rfe(target~., data = dat,
                          sizes = params$sizes,
                          rfeControl = ctrlRFE,
@@ -79,7 +80,7 @@ fitAlgo <- function(params, dat){
     
     trControl <- caret::trainControl(method = "cv", number = params$kOut, 
                                      classProbs = T, index = folds,
-                                     selectionFunction = "oneSE")
+                                     selectionFunction = "oneSE", allowParallel = F)
     model <- caret::train(target~., data = dat, family = "binomial",
                           method = all[[name]], trControl = trControl, 
                           tuneGrid = params$tuneGrids[[name]], 
@@ -91,10 +92,10 @@ fitAlgo <- function(params, dat){
     acc[[name]] <- model$results[rownames(model$bestTune), "Accuracy"]
   }
   #hybrid: gini (filter) + whale opt (wrapper)
-  filt_eval <- FSinR::filterEvaluator('giniIndex')
-  hyb_search <- FSinR::whaleOptimization(10, 50)
-  res <- hyb_search(dat, "target", featureSetEval = filt_eval)
-  substs[["hyb"]] <- dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]
+  # filt_eval <- FSinR::filterEvaluator('giniIndex')
+  # hyb_search <- FSinR::whaleOptimization(10, 50)
+  # res <- hyb_search(dat, "target", featureSetEval = filt_eval)
+  # substs[["hyb"]] <- dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]
   # Boruta & ReliefF
   ranks[, Boruta := (Boruta::Boruta(target~., data = dat))$finalDecision]
   res <- ranger::ranger(target~., data=dat, importance = "impurity",splitrule = "gini",
@@ -130,8 +131,8 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
     s <- .Random.seed
     if (changes["pr"] || changes["corrPred"]) XY <- simDat(conds)
     mssng <- simR(conds, XY)
-    nms <- names(XY)[grep("(.*Cont)|(.*Ord)", names(XY))]
-    XY[, (nms) := lapply(.SD, scale), .SDcols=nms]
+    # nms <- names(XY)[grep("(.*Cont)|(.*Ord)", names(XY))]
+    # XY[, (nms) := lapply(.SD, scale), .SDcols=nms]
     XY[, target := factor(mssng$R, labels = c("c","m"))]
     res <- tryCatch(withCallingHandlers(
       expr = fitAlgo(conds, XY[,!"Y"]), 
@@ -143,7 +144,6 @@ simRep <- function(fixed, varied, rpt="test", nfac=4){
         errs <<- c(errs, list(e))
       }
     )
-    if (!dir.exists(conds$dir)) dir.create(conds$dir)
     saveRDS(list(coef=mssng$coefs,
                  res=res,
                  RNGstate=s,

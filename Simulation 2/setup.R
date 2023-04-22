@@ -14,25 +14,25 @@
 # @subsest: list of name:NULL for methods which output subsets
 fixedParams <- list(dir=file.path("Simulation 2", "Results"),
                     N=299, 
+                    seed=1813544,
+                    streams=500,
                     kInn=3, 
                     kOut=5, 
-                    sizes = c(0:6),
+                    sizes = c(0, 1, 2, 5),
                     tuneGrids = list(lasso=expand.grid(alpha=1,
-                                                       lambda=seq(0.1,4,0.1)),
-                                     EN=expand.grid(alpha=seq(0.1, 0.99, 0.1),
-                                                    lambda=seq(0.1,4,0.5)),
-                                     ranger=expand.grid(min.node.size=8:10,
-                                                        mtry=1:3,
+                                                       lambda=lseq(0.004,4,40)),
+                                     EN=expand.grid(alpha=lseq(0.3, 0.9, 2),
+                                                    lambda=lseq(0.004,4,30)),
+                                     ranger=expand.grid(min.node.size=c(1, 3),
+                                                        mtry=c(floor(sqrt(10)), 4),
                                                         splitrule="gini",
                                                         importance="impurity"),
-                                     svmLinear=expand.grid(C=seq(1,10,1)),
-                                     svmRadial=expand.grid(C=seq(1,10,1),
-                                                           sigma=seq(0.1,1,0.2))),
-                    Ntotal = 120,
-                    map.funcs = list("normParam"=qnorm, "gamParam"=qgamma,"binParam"=qbinom,
-                                     "logParam"=qlogis, "paramY"=qbeta),
+                                     svmLinear=expand.grid(C=lseq(2**(-5),2**(15),20)),
+                                     svmRadial=expand.grid(C=lseq(2**(-5),2**(15),10),
+                                                           sigma=lseq(2**(-5),2**(15),5))),
                     deg = 3,
-                    fcbcThres = list(0, 0.2, 0.3),
+                    Ntotal = 10,
+                    fcbcThres = list(0, 0.1, 0.3, 0.5),
                     rankers = list("LR"="glm",  
                                    "ReliefF"=NULL,
                                    "Boruta"=NULL,
@@ -49,7 +49,7 @@ fixedParams <- list(dir=file.path("Simulation 2", "Results"),
 # varied factors
 
 variedParams <- data.table::setDT(expand.grid(
-  list(mechanism = c("mcar", "marr", "marc", "mart", "mnar"),
+  list(mechanism = c("mcar", "mar", "mnar"),
        pm = c(0.1, 0.5),
        R2r = c(0.3, 0.6)))
 )
@@ -58,5 +58,3 @@ variedParams <- data.table::setDT(expand.grid(
 variedParams <- variedParams[!(mechanism=="mcar" & R2r == 0.6)]
 variedParams <- variedParams[mechanism=="mcar", R2r := NA]
 
-# coefs for splines
-variedParams[, theta := list(c(0.3, 0.5, 0.6, 0.1, 0.2))]
