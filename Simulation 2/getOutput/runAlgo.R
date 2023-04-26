@@ -53,7 +53,7 @@ fitAlgo <- function(params, dat){
   }
   substs <- c(substs, setNames(lapply(params$fcbcThres, #fast correlation-based filter
                                       function(x) 
-                                        try(FCBF::fcbf(discretize_exprs(t(dat[,!"target"])),
+                                        try(FCBF::fcbf(discretize_exprs(t(scale(dat[,!"target"]))),
                                                        t(dat[,target]),
                                                        minimum_su=x), 
                                             silent = T)),  
@@ -94,11 +94,11 @@ fitAlgo <- function(params, dat){
       names(which(coef(model$finalModel, model$bestTune$lambda)[-1,] != 0))
     acc[[name]] <- model$results[rownames(model$bestTune), "Accuracy"]
   }
-  #hybrid: gini (filter) + whale opt (wrapper)
-  # filt_eval <- FSinR::filterEvaluator('giniIndex')
-  # hyb_search <- FSinR::whaleOptimization(10, 50)
-  # res <- hyb_search(dat, "target", featureSetEval = filt_eval)
-  # substs[["hyb"]] <- dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]
+  # hybrid: gini (filter) + whale opt (wrapper)
+  filt_eval <- FSinR::filterEvaluator('giniIndex')
+  hyb_search <- FSinR::whaleOptimization(10, 50)
+  res <- hyb_search(dat, "target", featureSetEval = filt_eval)
+  substs[["hyb"]] <- dimnames(res$bestFeatures)[[2]][res$bestFeatures==1]
   # Boruta & ReliefF
   ranks[, Boruta := (Boruta::Boruta(target~., data = dat))$finalDecision]
   res <- ranger::ranger(target~., data=dat, importance = "impurity",splitrule = "gini",
@@ -126,13 +126,13 @@ simRep <- function(dt, fixed, varied, rpt="test", nfac=3){
   rlecuyer::.lec.CurrentStream(rpt)
   
   prev <- rep("none", nfac)
+  XY <- sampleDT(dt, nrow(dt))
   for (i in 1:nrow(varied)){
     warns <- errs <- list()
     conds <- c(fixed, varied[i,])
     changes <- varied[i, 1:nfac] != prev 
     names(changes) <- colnames(varied)[1:nfac]
     s <- .Random.seed
-    XY <- sampleDT(dt, nrow(dt))
     mssng <- simR(conds, XY)
     XY[, target := factor(mssng$R, labels = c("c","m"))]
     res <- tryCatch(withCallingHandlers(

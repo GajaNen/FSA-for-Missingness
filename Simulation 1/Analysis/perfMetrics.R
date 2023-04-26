@@ -39,17 +39,17 @@ getPF <- function(conds, nrpt, nms){
         pwr <- rep(0, length(all_substs))
         alls <- lapply(1:nrpt,
                        function(x) vector(mode="list", length = length(all_substs)))
+        pwr.pv <- array(NA, dim=c(length(all_substs), length(pos), nrpt))
+        rownames(pwr.pv) <- names(all_substs)
+        colnames(pwr.pv) <- pos
+        corr.sel <- array(NA, dim=c(length(pos), length(pos), 
+                                    length(all_substs), nrpt))
+        rownames(corr.sel) <- colnames(corr.sel) <- pos
       }
-      alls[[i]] <- all_substs
+      alls[[i]] <- all_substs <- lapply(all_substs, catchNames, nms)
       acc[i, names(acc) := res$res$accuracies]
       metrics <- lapply(all_substs,
                         function(x){
-                          if (class(x)=="try-error"){
-                            x <- NULL
-                          }
-                          else if(class(x)=="data.frame"){
-                            x <- rownames(x)
-                          }
                           TPR <- as.numeric(length(intersect(x, pos)) / length(pos))
                           FPR <- as.numeric(length(intersect(x, neg)) / length(neg))
                           return(c(TPR=TPR, FPR=FPR))
@@ -62,13 +62,31 @@ getPF <- function(conds, nrpt, nms){
         # success rate TPR - FPR
         subsets[i, names(subsets) := lapply(metrics, function(x) 100*(x["TPR"] - alpha*x["FPR"]))]
         pwr <- pwr + (unlist(lapply(metrics, "[",1)) == 1)
+        pwr.pv[,,i] <- sapply(pos, 
+                              function(x)
+                                sapply(all_substs, function(y)
+                                  x %in% y))
+        m <- array(100, dim=c(length(pos),length(pos),length(all_substs)))
+        lwrtri <- lapply(all_substs,
+                         function(x) lapply(seq_along(pos),
+                                            function(y) sapply(y:length(pos),
+                                                               function(z) (pos[z] %in% x &
+                                                                            pos[y] %in% x))))
+        lapply(seq_along(lwrtri), function(x) {
+          mx <- diag(0, length(pos), length(pos))
+          mx[lower.tri(mx, diag = T)] <- unlist(lwrtri[[x]])
+          mx[upper.tri(mx)] <- t(mx)[upper.tri(mx)]
+          m[,,x] <<- mx
+        })
+          
+        corr.sel[,,,i] <- m
       }
       # similarity -- pairwise subsets Jaccard's index
       s <- all_substs
       n <- length(s)
       similarity <- lapply(1:(n-1),function(x) sapply((x+1):n, function(y) Jaccard(s[x][[1]], s[y][[1]])))
-      
-      m <- diag(100, n, n)
+
+      m <- diag(100, n, n) # here in perc, JI returns percs
       m[lower.tri(m)] <- unlist(similarity)
       m[upper.tri(m)] <- t(m)[upper.tri(m)]
       JI_sim[,,i] <- m
@@ -76,7 +94,7 @@ getPF <- function(conds, nrpt, nms){
     }
   # stability -- Jaccard's index of all pairs of reps
   JI_stab[, names(JI_stab) :=
-            lapply(names(JI_stab), 
+            lapply(names(JI_stab),
                    function(x) mean(unlist(sapply(1:(nrpt-1),
                                       function(y)
                                         sapply((y+1):nrpt,
@@ -87,15 +105,62 @@ getPF <- function(conds, nrpt, nms){
           ]
   # return mean accuracy and all measures
   acc_means <- colMeans(acc)*100
-  acc_sd <- acc[, lapply(.SD, sd)]
-  JI_sim_mean <- apply(JI_sim, c(1,2), mean)
+  acc_sd <- acc[, lapply(.SD, sd)]*100
+  JI_sim_mean <- apply(JI_sim, c(1,2), mean)*100
   subsets_mean <- colMeans(subsets)
+  pwr.var <- apply(pwr.pv, c(1,2), mean, na.rm=T)
+  corrs <- apply(corr.sel, c(1,2,3), mean, na.rm=T)
   return(list(accMean=acc_means,accSD=acc_sd,
               similarity=JI_sim_mean,
-              PFM=subsets_mean,power=pwr/nrpt,
+              PFM=subsets_mean,power=pwr/nrpt*100,
               stability=JI_stab, rnksM=rnkrs_thr$means,
-              rnksSD=rnkrs_thr$sds, errs=errs))
+              rnksSD=rnkrs_thr$sds, errs=errs,
+              powerVar=pwr.var*100,
+              corrs=corrs*100))
 }
+
+###--------------------------------------------------------------------------###
+
+catchNames <- function(vec, nms){
+  
+  new.vec <- vec
+  if (!(class(vec) %in% c("try-error", "data.frame"))){
+    
+    for (i in seq_along(vec)){
+      if (!(vec[i] %in% nms)){
+        nm <- vec[i]
+        num <- as.numeric(regmatches(nm, regexpr("\\d+", nm)))
+        if (num >= 10){
+          num.new <- as.character(num %/% 10)
+          new.vec[i] <- paste0(regmatches(nm, regexpr(".*Bin", nm)), 
+                               num.new)
+        }
+      } 
+    }
+    doubles.idx <- duplicated(new.vec)
+    for (i in seq_along(new.vec)){
+      if (doubles.idx[i]){
+        nm <- new.vec[i]
+        num <- as.numeric(regmatches(nm, regexpr("\\d+", nm)))
+        if (num >= 10){
+          num.new <- as.character(num %/% 10)
+          new.vec[i] <- paste0(regmatches(nm, regexpr(".*Bin", nm)), 
+                               num.new)
+        }
+      }
+    }
+    
+  } else if (class(vec) == "try-error"){
+    new.vec <- NULL
+  } else if (class(vec) == "data.frame"){
+    new.vec <- nms[vec$index]
+  }
+  
+  return(new.vec)
+  
+}
+
+#gsub(".*Bin(?=\\d{2})", ".*1", vec, perl=T)
 
 ###--------------------------------------------------------------------------###
 
@@ -119,11 +184,7 @@ applyThres <- function(rk, nms){
   t.log2n <- ceiling(log2(N))
   rs[paste0(c("ReliefF", "RF"), "_log2n")] <-
     lapply(rk[, c("ReliefF", "RF")], function(x) nms[order(x)[1:t.log2n]])
-  # Fisher's dicriminant ratio
-  
   # ReliefF
-  #rk$ReliefF
-  #seq(0, 1/sqrt(0.05*10), 0.2)
   t.relief <- c(0, 1/sqrt(0.05*10), mean(rk$ReliefF)-2*var(rk$ReliefF))
   rs[paste0("RelieF_", c("0", "alphaM", "meanVar"))] <-
     lapply(t.relief, function(x) nms[rk[, ReliefF > x]])
