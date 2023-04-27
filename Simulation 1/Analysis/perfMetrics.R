@@ -1,5 +1,73 @@
 ###--------------------------------------------------------------------------###
 
+getSubs <- function(conds, nrpt, nms){
+  
+  path <- conds$dir
+  errs <- 0
+  
+  if (conds$mechanism=="mcar"){
+    pos <- NULL
+    neg <- nms
+  } else  {
+    pos <- nms[grep("^Rel",nms)]
+    neg <- nms[grep("^Irrel",nms)]
+    alpha <- min(0.5, length(pos)/length(neg))
+  }
+  for (i in 1:nrpt){
+    res <- readRDS(file.path(path, paste0("mech_", conds$mechanism,
+                                          "_pm_", conds$pm,
+                                          "_corrPred_", conds$corrPred,
+                                          "_pr_", conds$pr,
+                                          "_rep_", i,
+                                          ".RDS")))
+    all_substs <- res$res$subsets
+    if (i == 1){ # we don't know in advance how many will have accuracy metrics
+      acc <- data.table::setDT(lapply(1:length(res$res$accuracies), function(x) rep(0, nrpt)))
+      data.table::setnames(acc, names(res$res$accuracies))
+      subsets <- data.table::setDT(lapply(seq_along(all_substs),
+                                          function(x) numeric(nrpt)))
+      data.table::setnames(subsets, c(names(all_substs)))
+      pwr <- rep(0, length(all_substs))
+      alls <- lapply(1:nrpt,
+                     function(x) vector(mode="list", length = length(all_substs)))
+      pwr.pv <- array(NA, dim=c(length(all_substs), length(pos), nrpt))
+      rownames(pwr.pv) <- names(all_substs)
+      colnames(pwr.pv) <- pos
+    }
+    alls[[i]] <- all_substs <- lapply(all_substs, catchNames, nms)
+    acc[i, names(acc) := res$res$accuracies]
+    metrics <- lapply(all_substs,
+                      function(x){
+                        TPR <- as.numeric(length(intersect(x, pos)) / length(pos))
+                        FPR <- as.numeric(length(intersect(x, neg)) / length(neg))
+                        return(c(TPR=TPR, FPR=FPR))
+                      }
+    )
+    if (conds$mechanism == "mcar"){
+      # calculate PF which does not include pos: false positive rate = ME
+      subsets[i, names(subsets) := lapply(metrics, function(x) 100*(1-x["FPR"]))]
+    } else {
+      # success rate TPR - FPR
+      subsets[i, names(subsets) := lapply(metrics, function(x) 100*(x["TPR"] - alpha*x["FPR"]))]
+      pwr <- pwr + (unlist(lapply(metrics, "[",1)) == 1)
+      pwr.pv[,,i] <- sapply(pos, 
+                            function(x)
+                              sapply(all_substs, function(y)
+                                x %in% y))
+      }
+    }
+
+  # return mean accuracy and all measures
+  pwr.var <- apply(pwr.pv, c(1,2), mean, na.rm=T)
+  return(list(accMean=acc[, lapply(.SD, function(x) mean(x)*100)],
+              accSD=acc[, lapply(.SD, sd)]*100,
+              PFM=subsets[, lapply(.SD, mean), .SDcols=!"rbfSvmSA"],
+              power=pwr/nrpt*100,
+              powerVar=pwr.var*100))
+}
+
+###--------------------------------------------------------------------------###
+
 getPF <- function(conds, nrpt, nms){
   
   path <- conds$dir
@@ -42,9 +110,11 @@ getPF <- function(conds, nrpt, nms){
         pwr.pv <- array(NA, dim=c(length(all_substs), length(pos), nrpt))
         rownames(pwr.pv) <- names(all_substs)
         colnames(pwr.pv) <- pos
-        corr.sel <- array(NA, dim=c(length(pos), length(pos), 
-                                    length(all_substs), nrpt))
-        rownames(corr.sel) <- colnames(corr.sel) <- pos
+        # if (conds$mechanism!="mcar" && conds$corrPred==1){
+        #   corr.sel <- array(NA, dim=c(length(pos), length(pos), 
+        #                               length(all_substs), nrpt))
+        #   rownames(corr.sel) <- colnames(corr.sel) <- pos
+        # }
       }
       alls[[i]] <- all_substs <- lapply(all_substs, catchNames, nms)
       acc[i, names(acc) := res$res$accuracies]
@@ -66,20 +136,22 @@ getPF <- function(conds, nrpt, nms){
                               function(x)
                                 sapply(all_substs, function(y)
                                   x %in% y))
-        m <- array(100, dim=c(length(pos),length(pos),length(all_substs)))
-        lwrtri <- lapply(all_substs,
-                         function(x) lapply(seq_along(pos),
-                                            function(y) sapply(y:length(pos),
-                                                               function(z) (pos[z] %in% x &
-                                                                            pos[y] %in% x))))
-        lapply(seq_along(lwrtri), function(x) {
-          mx <- diag(0, length(pos), length(pos))
-          mx[lower.tri(mx, diag = T)] <- unlist(lwrtri[[x]])
-          mx[upper.tri(mx)] <- t(mx)[upper.tri(mx)]
-          m[,,x] <<- mx
-        })
-          
-        corr.sel[,,,i] <- m
+        # if (conds$mechanism!="mcar" && conds$corrPred==1){
+        #   m <- array(100, dim=c(length(pos),length(pos),length(all_substs)))
+        #   lwrtri <- lapply(all_substs,
+        #                    function(x) lapply(seq_along(pos),
+        #                                       function(y) sapply(y:length(pos),
+        #                                                          function(z) (pos[z] %in% x &
+        #                                                                         pos[y] %in% x))))
+        #   lapply(seq_along(lwrtri), function(x) {
+        #     mx <- diag(0, length(pos), length(pos))
+        #     mx[lower.tri(mx, diag = T)] <- unlist(lwrtri[[x]])
+        #     mx[upper.tri(mx)] <- t(mx)[upper.tri(mx)]
+        #     m[,,x] <<- mx
+        #   })
+        #   
+        #   corr.sel[,,,i] <- m
+        # }
       }
       # similarity -- pairwise subsets Jaccard's index
       s <- all_substs
@@ -93,23 +165,29 @@ getPF <- function(conds, nrpt, nms){
       }
     }
   # stability -- Jaccard's index of all pairs of reps
-  JI_stab[, names(JI_stab) :=
-            lapply(names(JI_stab),
-                   function(x) mean(unlist(sapply(1:(nrpt-1),
-                                      function(y)
-                                        sapply((y+1):nrpt,
-                                      function(n) Jaccard(alls[[y]][[x]],
-                                                  alls[[n]][[x]]))
-                                      )))
-                   )
-          ]
+  # JI_stab[, names(JI_stab) :=
+  #           lapply(names(JI_stab),
+  #                  function(x) mean(unlist(sapply(1:(nrpt-1),
+  #                                     function(y)
+  #                                       sapply((y+1):nrpt,
+  #                                     function(n) Jaccard(alls[[y]][[x]],
+  #                                                 alls[[n]][[x]]))
+  #                                     )))
+  #                  )
+  #         ]
+  JI_stab <- NULL
   # return mean accuracy and all measures
-  acc_means <- colMeans(acc)*100
+  acc_means <- acc[, lapply(.SD, function(x) mean(x)*100)]
   acc_sd <- acc[, lapply(.SD, sd)]*100
-  JI_sim_mean <- apply(JI_sim, c(1,2), mean)*100
+  JI_sim_mean <- apply(JI_sim, c(1,2), mean)
   subsets_mean <- colMeans(subsets)
   pwr.var <- apply(pwr.pv, c(1,2), mean, na.rm=T)
-  corrs <- apply(corr.sel, c(1,2,3), mean, na.rm=T)
+  # if (conds$mechanism!="mcar" && conds$corrPred==1){
+  #   corrs <- apply(corr.sel, c(1,2,3), mean, na.rm=T)
+  # } else {
+  #   corrs <- NULL
+  # }
+  corrs <- 0
   return(list(accMean=acc_means,accSD=acc_sd,
               similarity=JI_sim_mean,
               PFM=subsets_mean,power=pwr/nrpt*100,
