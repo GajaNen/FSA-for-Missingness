@@ -1,9 +1,18 @@
+# glossary:
+# FSA: feature selection algorithm
+# R: non-response indicator (target of FSAs)
+# Y: incomplete variable
+# R2r: explained variance in the latent variable for R
+# PM: percentage of missing values (0.1, 0.5)
+# mechanism: missingness mechanism (MCAR, MAR, MNAR)
+
+###--------------------------------------------------------------------------###
+
 # each condition: a row of variedParams + all fixedParams
 
-# fixed parameters
-# FOR TESTING PURPOSES ONLY
+# fixed parameters (don't change over conditions)
 # @dir: char, output directory for saving results
-# @N: num, number of samples
+# @N: num, number of samples to be taken with replacement from the heart failure data
 # @kInn: int, number of inner level folds for algorithms which use two levels of resampling scheme
 # @kOut: int. number of folds for outer (or only) level of resampling
 # @sizes: vector of ints, sizes considered in RFE
@@ -27,9 +36,8 @@ fixedParams <- list(dir=file.path("Simulation 2", "Results"),
                                                         mtry=c(floor(sqrt(10)), 4),
                                                         splitrule="gini",
                                                         importance="impurity"),
-                                     svmLinear=expand.grid(C=lseq(2**(-5),2**(15),20)),
-                                     svmRadial=expand.grid(C=lseq(2**(-5),2**(15),10),
-                                                           sigma=lseq(2**(-5),2**(15),5))),
+                                     svmRadial=expand.grid(C=lseq(2**(-5),2**(15),10), # was not tuned due to computational limitations
+                                                           sigma=lseq(2**(-5),2**(15),5))), 
                     deg = 3,
                     Ntotal = 10,
                     fcbcThres = list(0, 0.1, 0.3, 0.5),
@@ -39,14 +47,15 @@ fixedParams <- list(dir=file.path("Simulation 2", "Results"),
                                    "RF"=NULL),
                     subsets = list("lasso"="glmnet",
                                    "EN"="glmnet", 
-                                   "rbfSvmSA"="svmRadial",
+                                   "rbfSvmSA"="svmRadial", # was not tuned due to computational limitations
                                    "rfRFE"="ranger", 
                                    "l1SVM"=NULL,
                                    "hyb"=NULL)
 )
 
+###--------------------------------------------------------------------------###
 
-# varied factors
+# varied factors (change over conditions)
 
 variedParams <- data.table::setDT(expand.grid(
   list(mechanism = c("mcar", "mar", "mnar"),
@@ -54,7 +63,10 @@ variedParams <- data.table::setDT(expand.grid(
        R2r = c(0.3, 0.6)))
 )
 
+###--------------------------------------------------------------------------###
 
+# don't vary R2r for MCAR
 variedParams <- variedParams[!(mechanism=="mcar" & R2r == 0.6)]
 variedParams <- variedParams[mechanism=="mcar", R2r := NA]
 
+###--------------------------------------------------------------------------###
