@@ -49,7 +49,6 @@ x <- foreach(nMc=1:500, .packages=c("data.table",
 b <- Sys.time()
 
 print(b-a)
-res1 <- readRDS("Simulation 2/Results/mech_mar_pm_0.5_corrPred_0_pr_0.2_rep_2.RDS")
 
 stopImplicitCluster()
 stopCluster(cl)
