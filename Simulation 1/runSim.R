@@ -48,7 +48,6 @@ x <- foreach(nMc=1:500, .packages=c("mvnfast",
 b <- Sys.time()
 
 print(b-a)
-res1 <- readRDS("Simulation 1/Results/mech_mar_pm_0.5_corrPred_0_pr_0.2_rep_22.RDS")
 
 stopImplicitCluster()
 stopCluster(cl)
