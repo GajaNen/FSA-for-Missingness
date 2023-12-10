@@ -1,5 +1,3 @@
-# Thesis
-
 This repository contains the code for the manuscript titled *Identifying Predictors of Missingness with Feature Selection Algorithms*. 
 
 *Design:*
