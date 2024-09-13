@@ -1,3 +1,5 @@
+# dependencies: data.table, mvnfast
+
 ###--------------------------------------------------------------------------###
 
 # generate ordinal variable from quantiles of logistic distribution given

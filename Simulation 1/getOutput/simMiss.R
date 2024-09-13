@@ -1,3 +1,5 @@
+# dependencies: splines, data.table
+
 ###--------------------------------------------------------------------------###
 
 # generate splines with 1 knot at the median for one variable

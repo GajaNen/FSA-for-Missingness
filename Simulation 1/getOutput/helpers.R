@@ -1,3 +1,5 @@
+# dependencies: caret
+
 ###--------------------------------------------------------------------------###
 
 # modified function from caret package for choosing subset size in RFE
