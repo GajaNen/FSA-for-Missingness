@@ -31,7 +31,7 @@
 # @rankers: list of names:function (RFE, SA, glmnet, i.e. all from caret) or names of ranker FSA (others)
 # @subsets: list of name:NULL for methods which output subsets
 fixedParams <- list(simN=1,
-                    dir=file.path("Simulation 1", "Results"),
+                    dir=file.path(getwd(), "Simulation 1", "rerunFCBF_sim1"),
                     seed=1813544,
                     streams=500,
                     N=1000, 
@@ -147,8 +147,8 @@ paramy <- list(c(shape1=2,shape2=5)) # marginal for Y
 norms_hp_r <- c(rep(list(c(mean = 0, sd = 1)), 2), rep(list(c(mean = 2, sd = 5)), 2))
 gams_hp_r <- c(rep(list(c(shape = 0.2, rate = 1)), 2), rep(list(c(shape = 2, rate=3)), 2))
 binsp_hp_r <- c(rep(list(c(size=1, prob=0.3)), 2), rep(list(c(size=1, prob=0.7)), 2),
-           rep(list(c(size=1, prob=0.5)), 2), rep(list(c(size=1, prob=0.1)), 2))
-           
+                rep(list(c(size=1, prob=0.5)), 2), rep(list(c(size=1, prob=0.1)), 2))
+
 ### PR = 0.05
 norms_lp_r  <- list(c(mean = 0, sd = 1))
 gams_lp_r <- list(c(shape = 0.2, rate = 1))
@@ -163,7 +163,7 @@ variedParams[, paramsRel :=
                    c(norms_lp_r, gams_lp_r, binsp_lp_r, rep(logsp, (Nt)*x/3),paramy)
                  }
                })
-             ]
+]
 
 
 ### population cumulative probabilities of each category for ordinal Xrel
@@ -171,8 +171,8 @@ variedParams[, popProbsRel :=
                lapply(pr, function(x)
                  c(rep(list(c(0.2, 0.1, 0.3, 0.2, 0.2)), Nt*x/6), 
                    rep(list(c(0.4, 0.1, 0.1, 0.2, 0.2)), Nt*x/6))
-                 )
-             ]
+               )
+]
 
 ## marginals for Xirrel
 Ni_lp <- Nt-Nt*0.05
@@ -182,13 +182,13 @@ Ni_hp <- Nt-Nt*0.2
 norms_hp_i <- c(rep(list(c(mean = 0, sd = 1)), Ni_hp/12), rep(list(c(mean = 2, sd = 5)), Ni_hp/12))
 gams_hp_i <- c(rep(list(c(shape = 0.2, rate = 1)), Ni_hp/12), rep(list(c(shape = 2, rate=3)), Ni_hp/12))
 binsp_hp_i <- c(rep(list(c(size=1, prob=0.3)), Ni_hp/12), rep(list(c(size=1, prob=0.7)), Ni_hp/12),
-           rep(list(c(size=1, prob=0.5)), Ni_hp/12), rep(list(c(size=1, prob=0.1)), Ni_hp/12))
+                rep(list(c(size=1, prob=0.5)), Ni_hp/12), rep(list(c(size=1, prob=0.1)), Ni_hp/12))
 
 ### PR = 0.05
 norms_lp_i <- rep(list(c(mean = 0, sd = 1)), Ni_lp/6)
 gams_lp_i <- rep(list(c(shape = 0.2, rate = 1)), Ni_lp/6)
 binsp_lp_i <- c(rep(list(c(size=1, prob=0.3)), Ni_lp/6), 
-           rep(list(c(size=1, prob=0.5)), Ni_lp/6))
+                rep(list(c(size=1, prob=0.5)), Ni_lp/6))
 
 
 variedParams[, paramsIrrel := 
@@ -205,15 +205,15 @@ variedParams[, popProbsIrrel :=
                  c(rep(list(c(0.2, 0.1, 0.3, 0.2, 0.2)), Nt*(1-x)/6), 
                    rep(list(c(0.4, 0.1, 0.1, 0.2, 0.2)), Nt*(1-x)/6))
                )
-             ]
+]
 
 ## set repetitions of each type of marginal distribution (e.g. normal, gamma, etc.)
 variedParams[, repsRel := 
                lapply(pr, function(x) c(Nt*x/6, Nt*x/6, Nt*x/3, Nt*x/3, 1))]
 variedParams[, repsIrrel := 
                lapply(pr, function(x) c(Nt*(1-x)/6, Nt*(1-x)/6, Nt*(1-x)/3, Nt*(1-x)/3))]
-               
-               
+
+
 ## set names of desired distributions to be used for mapping to appropriate quantile function
 variedParams[, distsRel := 
                lapply(repsRel,
@@ -223,7 +223,7 @@ variedParams[, distsRel :=
 variedParams[, distsIrrel := 
                lapply(repsIrrel,
                       function(x) unlist(mapply(rep, names(fixedParams$map.funcs)[seq_along(x)], x,
-                                        USE.NAMES = F)))]
+                                                USE.NAMES = F)))]
 
 ###--------------------------------------------------------------------------###
 

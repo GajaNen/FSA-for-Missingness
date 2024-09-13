@@ -8,9 +8,15 @@ if (!grepl("(.*Thesis-main$)", getwd())){
 set.seed(1813544)
 
 lapply(c(file.path("Simulation 1", "Scripts", "depend.R"),
-         list.files(file.path("Simulation 1", "Scripts", "getOutput"),pattern=".*R$",full.names = T),
+         file.path("Simulation 1", "Scripts", "getOutput", "helpers.R"),
+         file.path("Simulation 1", "Scripts", "getOutput", "simMiss.R"),
+         file.path("Simulation 1", "Scripts", "getOutput", "simXY.R"),
+         file.path("Simulation 1", "Scripts", "getOutput", "runAlgo_FCBF_rerun.R"),
          file.path("Simulation 1", "Scripts", "setup.R")), 
        source)
+
+fixedParams$dir <- file.path("Simulation 1", "Results_rerun")
+fixedParams$prevdir <- file.path("Simulation 1", "Results")
 
 # create the directory for the results if it doesn't exist yet
 if (!dir.exists(fixedParams$dir)) dir.create(fixedParams$dir)
@@ -24,17 +30,13 @@ clusterEvalQ(cl = cl, {
 })
 registerDoParallel(cl)
 
+
 a <- Sys.time()
 
 # modify nMc to run a subset of repetitions, e.g. nMc=1:10
 x <- foreach(nMc=1:500, .packages=c("mvnfast",
                                     "data.table",
                                     "splines",
-                                    "caret",
-                                    "ranger",
-                                    "Boruta",
-                                    "FSelector",
-                                    "sparseSVM",
                                     "FCBF",
                                     "rlecuyer")) %dopar% {
                                       simRep(fixedParams, variedParams, nMc)
