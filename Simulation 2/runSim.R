@@ -1,18 +1,19 @@
 # options(scipen=999)
 rm(list=ls(all=T))
 gc()
-if (!grepl("(.*Thesis-main$)", getwd())){
-  stop("change WD to Thesis-main dir!")
+if (!grepl("(.*Thesis-main$)|(.*Thesis$)", getwd())){
+  stop("change WD to Thesis dir!")
 }
 
 set.seed(1813544)
 
-lapply(c(file.path("Simulation 1", "Scripts", "depend.R"),
-         list.files(file.path("Simulation 1", "Scripts", "getOutput"),pattern=".*R$",full.names = T),
-         file.path("Simulation 1", "Scripts", "setup.R")), 
+lapply(c(file.path("Simulation 2", "Preprocessing", "preprocess.R"),
+         file.path("Simulation 2", "Scripts", "depend.R"),
+         list.files(file.path("Simulation 2", "Scripts", "getOutput"),pattern=".*R$",full.names = T),
+         file.path("Simulation 2", "Scripts", "setup.R")), 
        source)
 
-# create the directory for the results if it doesn't exist yet
+# if the directory for results doesn't exist, create one
 if (!dir.exists(fixedParams$dir)) dir.create(fixedParams$dir)
 
 ncores <- detectCores()
@@ -26,18 +27,20 @@ registerDoParallel(cl)
 
 a <- Sys.time()
 
-# modify nMc to run a subset of repetitions, e.g. nMc=1:10
-x <- foreach(nMc=1:500, .packages=c("mvnfast",
-                                    "data.table",
-                                    "splines",
+# modify nMC for a smaller number of repetitions, e.g. nMc=1:10
+x <- foreach(nMc=1:500, .packages=c("data.table",
                                     "caret",
                                     "ranger",
                                     "Boruta",
                                     "FSelector",
+                                    "FSinR",
                                     "sparseSVM",
                                     "FCBF",
                                     "rlecuyer")) %dopar% {
-                                      simRep(fixedParams, variedParams, nMc)
+                                      simRep(dt = datPop, 
+                                             fixed = fixedParams, 
+                                             varied = variedParams, 
+                                             rpt = nMc)
                                     }
 
 b <- Sys.time()
